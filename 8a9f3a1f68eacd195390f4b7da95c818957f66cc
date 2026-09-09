@@ -1,0 +1,23 @@
+lib/dash/cli/doctor/host_checks.rb
+  s_dd360deb1a3dab::t_aacaade866c507 129-140
+  s_dd360deb1a3dab::t_87c48a47d2308d 116-121
+test/cli/doctor_test.rb
+  s_dd360deb1a3dab::t_bed103a95ea39b 371-374
+  s_dd360deb1a3dab::t_43477bd9b0435c 46-48,50,58-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "8a9f3a1f68eacd195390f4b7da95c818957f66cc",
+  "prompts": {},
+  "sessions": {
+    "s_dd360deb1a3dab": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "84200410-a76d-4418-872f-eb9767e23f5b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
