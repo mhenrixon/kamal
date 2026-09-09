@@ -1,0 +1,27 @@
+CLAUDE.md
+  ai_agent 37-38,62
+.claude/rules/coding-style.md
+  ai_agent 91
+bin/release
+  s_d6314f1bd4b733::t_a87413bdff20b6 1-114
+.claude/rules/git-workflow.md
+  ai_agent 79,96
+.claude/rules/upstream-sync.md
+  ai_agent 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "297719975d42baba686a366c41652384c8d68dc5",
+  "prompts": {},
+  "sessions": {
+    "s_d6314f1bd4b733": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d538f5b-cc0e-4786-ad95-aaea37286139",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
