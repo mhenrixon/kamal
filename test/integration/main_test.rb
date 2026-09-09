@@ -110,7 +110,7 @@ class MainTest < IntegrationTest
     assert_equal "localhost:5000/app:#{version}", config[:absolute_image]
     assert_equal "app-#{version}", config[:service_with_version]
     assert_equal [], config[:volume_args]
-    assert_equal({ user: "root", port: 22, keepalive: true, keepalive_interval: 30, log_level: :fatal }, config[:ssh_options])
+    assert_equal({ user: "root", port: 22, keepalive: true, keepalive_interval: 30, timeout: 30, log_level: :fatal }, config[:ssh_options])
     assert_equal({ "driver" => "docker", "arch" => "#{Dash::Utils.docker_arch}", "args" => { "COMMIT_SHA" => version } }, config[:builder])
     assert_equal [ "--log-opt", "max-size=\"10m\"" ], config[:logging]
   end

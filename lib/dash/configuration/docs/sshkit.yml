@@ -23,7 +23,8 @@ sshkit:
   #
   # A pooled connection that the network dropped while idle is evicted and the command
   # retried once on a fresh connection, so a long wait elsewhere (a server-lock poll, a
-  # loadbalancer reboot) does not fail the next command on another host.
+  # loadbalancer reboot) does not fail the next command on another host. A host that
+  # stops answering keepalives mid-command is not retried; that deploy fails.
   pool_idle_timeout: 300
 
   # DNS retry settings
