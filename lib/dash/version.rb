@@ -1,3 +1,3 @@
 module Dash
-  VERSION = "4.0.7"
+  VERSION = "4.0.8"
 end
