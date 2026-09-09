@@ -46,6 +46,11 @@ class ConfigurationSshTest < ActiveSupport::TestCase
 
     config = Dash::Configuration.new(@deploy.tap { |c| c.merge!(ssh: { "forward_agent" => true }) })
     assert_equal true, config.ssh.options[:forward_agent]
+
+    assert_equal 30, @config.ssh.options[:timeout]
+
+    config = Dash::Configuration.new(@deploy.tap { |c| c.merge!(ssh: { "connect_timeout" => 5 }) })
+    assert_equal 5, config.ssh.options[:timeout]
   end
 
   test "ssh options with proxy host" do

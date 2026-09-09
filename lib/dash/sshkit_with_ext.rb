@@ -181,8 +181,15 @@ class SSHKit::Backend::Netssh
   # The block is rerun, so a drop *mid-command* runs the command twice. That
   # is accepted: the errors here are the idle-drop ones, where nothing reached
   # the server, and the alternative is the deploy failing on the next host.
+  #
+  # Net::SSH::Timeout (a Disconnect subclass) is deliberately excluded. net-ssh
+  # raises it when a host has ignored `keepalive_maxcount` keepalives in a row,
+  # which is a host that stopped answering mid-command, not a dropped idle
+  # socket. Retrying that reconnects to a host that has just proven unresponsive
+  # and, if it accepts the connection but never finishes the handshake or the
+  # command, hangs the deploy with no further guard. Let it fail.
   module ReconnectOnStaleConnection
-    STALE_CONNECTION_ERRORS = [ Errno::ECONNRESET, Errno::EPIPE, Net::SSH::Disconnect, Net::SSH::Timeout ].freeze
+    STALE_CONNECTION_ERRORS = [ Errno::ECONNRESET, Errno::EPIPE, Net::SSH::Disconnect ].freeze
 
     private
       def with_ssh
@@ -191,17 +198,21 @@ class SSHKit::Backend::Netssh
         begin
           super do |ssh|
             yield ssh
-          rescue *STALE_CONNECTION_ERRORS
-            evict_stale_session(ssh)
+          rescue *STALE_CONNECTION_ERRORS => e
+            evict_stale_session(ssh) if stale_connection_error?(e)
             raise
           end
         rescue *STALE_CONNECTION_ERRORS => e
-          raise if reconnected
+          raise if reconnected || !stale_connection_error?(e)
 
           reconnected = true
           SSHKit.config.output.warn("Reconnecting to #{host}: #{e.message}")
           retry
         end
+      end
+
+      def stale_connection_error?(error)
+        !error.is_a?(Net::SSH::Timeout)
       end
 
       # `close` waits for channel-close acknowledgements, which never come over

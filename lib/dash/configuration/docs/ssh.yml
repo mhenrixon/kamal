@@ -79,3 +79,11 @@ ssh:
   # host or tunnel that does not support agent forwarding (for example,
   # Cloudflare Access for Infrastructure with SSH).
   forward_agent: false
+
+  # Connect timeout
+  #
+  # Seconds to wait for the TCP connection and the SSH handshake with a
+  # host before giving up with `Net::SSH::ConnectionTimeout`. Defaults to
+  # 30. Without a bound, a host that accepts the connection but never
+  # answers the handshake hangs the deploy indefinitely.
+  connect_timeout: 30

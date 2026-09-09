@@ -3,8 +3,12 @@ require "test_helper"
 # A pooled connection that a NAT or cloud network silently dropped while idle
 # still looks alive to SSHKit's ConnectionPool (its liveness probe is a
 # non-blocking `process(0)`), so the first command on it dies with ECONNRESET,
-# EPIPE, Net::SSH::Disconnect or Net::SSH::Timeout. The backend must evict that
-# session and retry the block exactly once on a fresh connection.
+# EPIPE or Net::SSH::Disconnect. The backend must evict that session and retry
+# the block exactly once on a fresh connection.
+#
+# Net::SSH::Timeout means the host ignored consecutive keepalives mid-command.
+# That host is unresponsive, not idle-dropped, and a retry against it can hang
+# the deploy indefinitely, so it must propagate untouched.
 class SshkitReconnectTest < ActiveSupport::TestCase
   FakeSession = Struct.new(:shutdowns) do
     def initialize = super(0)
@@ -40,7 +44,7 @@ class SshkitReconnectTest < ActiveSupport::TestCase
     SSHKit.config.output = @previous_output
   end
 
-  [ Errno::ECONNRESET, Errno::EPIPE, Net::SSH::Disconnect, Net::SSH::Timeout ].each do |error|
+  [ Errno::ECONNRESET, Errno::EPIPE, Net::SSH::Disconnect ].each do |error|
     test "evicts the stale session and retries once on #{error}" do
       attempts = 0
 
@@ -71,6 +75,21 @@ class SshkitReconnectTest < ActiveSupport::TestCase
 
     assert_equal 2, attempts
     assert @pool.sessions.all?(&:closed?)
+  end
+
+  test "does not retry a host that stopped answering keepalives" do
+    attempts = 0
+
+    assert_raises Net::SSH::Timeout do
+      @backend.send(:with_ssh) do
+        attempts += 1
+        raise Net::SSH::Timeout, "Timeout, server 1.2.3.4 not responding."
+      end
+    end
+
+    assert_equal 1, attempts
+    assert_equal 1, @pool.sessions.size
+    assert_not_includes @log_io.string, "Reconnecting"
   end
 
   test "does not retry other errors" do

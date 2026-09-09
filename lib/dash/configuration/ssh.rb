@@ -57,8 +57,15 @@ class Dash::Configuration::Ssh
     ssh_config["forward_agent"]
   end
 
+  # net-ssh only bounds the TCP connect and the version/key exchange when
+  # `timeout` is set. Without it, a host that accepts the TCP connection but
+  # never finishes the handshake blocks the deploy forever.
+  def connect_timeout
+    ssh_config.fetch("connect_timeout", 30)
+  end
+
   def options
-    { user: user, port: port, proxy: proxy, logger: logger, keepalive: true, keepalive_interval: 30, keys_only: keys_only, keys: keys, key_data: key_data, config: config, forward_agent: forward_agent }.compact
+    { user: user, port: port, proxy: proxy, logger: logger, keepalive: true, keepalive_interval: 30, keys_only: keys_only, keys: keys, key_data: key_data, config: config, forward_agent: forward_agent, timeout: connect_timeout }.compact
   end
 
   def to_h
