@@ -88,7 +88,7 @@ If you must accumulate results across hosts, use `SSHKit::Backend::Abstract#capt
 
 These are on top of the general rules above — see `CLAUDE.md` and `.claude/rules/upstream-sync.md` for the full list.
 
-- **The gemspec is `dash.gemspec`** and releases go through `rake release[X.Y.Z]` — the upstream-owned duplicates (`kamal.gemspec`, `bin/release`, `bin/kamal`) were deleted in the 2026-08 clean break.
+- **The gemspec is `dash.gemspec`** and releases go through `bin/release` (a wrapper around `rake release[X.Y.Z]`) — the upstream-owned duplicates (`kamal.gemspec`, the upstream `bin/release`, `bin/kamal`) were deleted in the 2026-08 clean break; today's `bin/release` is dash-owned.
 - **Interpolate `Dash::Configuration::Proxy::Run::MINIMUM_VERSION` in tests** — never hardcode a proxy tag like `"v0.9.2.1"` in an assertion; see `test/commands/proxy_test.rb`.
 - **New code that touches the proxy image org** uses `ghcr.io/zoolutions/dash-proxy` (via `Proxy::Run#repository` / `Proxy::Boot#repository_name`), not `basecamp/kamal-proxy`.
 - **Loadbalancer-only code** (`Dash::Cli::Proxy#loadbalancer`, `DASH.loadbalancer`, `Configuration::Proxy#load_balancing?`) is fork-owned — keep it isolated behind `load_balancing?` checks so it degrades cleanly when unset, since it auto-activates when the primary role has >1 host.

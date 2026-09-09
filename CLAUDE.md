@@ -34,7 +34,8 @@
 bin/test                              # Full suite (integration needs Docker + published proxy image)
 bundle exec ruby -Itest -e 'Dir["test/**/*_test.rb"].grep_v(/integration/).each { |f| require File.expand_path(f) }'  # Unit tests only
 bundle exec rubocop --parallel        # Lint
-rake release[3.2.0]                   # Release: version bump + tag v3.2.0 + GitHub release; CI trusted-publishes to RubyGems (Sigstore)
+bin/release [patch|minor|major|X.Y.Z] # Release: previews the bump + changelog, confirms, then runs rake release (`list`, `--dry-run`, `--force`)
+rake release[3.2.0]                   # Release (low-level): version bump + tag v3.2.0 + GitHub release; CI trusted-publishes to RubyGems (Sigstore)
 rake verify                           # Build the gem and list its contents
 bin/sync-proxy-flags                  # Refresh the proxy flag manifest when MINIMUM_VERSION moves
 ```
@@ -58,7 +59,7 @@ Layer 0: SSHKit                    (remote execution)
 
 1. If the proxy changed or `MINIMUM_VERSION` must move: in `../kamal-proxy`, `script/release-dash v1.0.0.X` → CI publishes `ghcr.io/zoolutions/dash-proxy:v1.0.0.X` (multi-arch, must be PUBLIC); set `MINIMUM_VERSION` here and run `bin/sync-proxy-flags`.
 2. `bin/test` (full suite).
-3. `rake release[X.Y.Z]` — gates on the proxy image, bumps `lib/dash/version.rb` + the `Gemfile.lock` pin, commits, pushes `main`, creates the `vX.Y.Z` GitHub release. The `release.yml` workflow then tests, builds, Sigstore-signs, and trusted-publishes to RubyGems (environment `rubygems`).
+3. `bin/release [patch|minor|major|X.Y.Z]` — computes the next version from `lib/dash/version.rb`, shows the commits since the last tag, requires a clean, up-to-date `main`, and asks for confirmation before running `rake release[X.Y.Z]`, which gates on the proxy image, bumps `lib/dash/version.rb` + the `Gemfile.lock` pin, commits, pushes `main`, creates the `vX.Y.Z` GitHub release. The `release.yml` workflow then tests, builds, Sigstore-signs, and trusted-publishes to RubyGems (environment `rubygems`).
 
 Gem tags are plain `vX.Y.Z` (own semver, 3.x line). Historical `dash-v*` tags are frozen. Proxy tags stay `v<base>.<n>` (or plain semver).
 

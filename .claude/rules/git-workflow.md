@@ -76,7 +76,7 @@ The suite is host-independent: `test_helper.rb` pins the Docker architecture and
 
 | What | Grammar | Example | How |
 |---|---|---|---|
-| Gem (this repo) | `v<semver>` | `v3.2.0` | `rake release[3.2.0]` |
+| Gem (this repo) | `v<semver>` | `v3.2.0` | `bin/release` (wraps `rake release[3.2.0]`) |
 | Proxy image (dash-proxy) | `v<base>.<n>` or plain `v<semver>` | `v1.0.0.6` | `script/release-dash` in ../kamal-proxy |
 
 - **NEVER** `-suffix` versions (e.g. `v1.0.0-rc1`) — `Gem::Version` parses `-` as a prerelease, which sorts OLDER than the base and hard-fails `dash proxy boot`'s minimum-version check
@@ -93,7 +93,7 @@ script/release-dash v1.0.0.6
 
 # 2. this repo, on main — confirm MINIMUM_VERSION matches, then:
 bin/test
-rake release[3.2.0]     # bump + commit + push + GitHub release; CI trusted-publishes to RubyGems
+bin/release minor       # preview + confirm, then rake release[3.2.0]: bump + commit + push + GitHub release; CI trusted-publishes to RubyGems
 ```
 
 ## Rules

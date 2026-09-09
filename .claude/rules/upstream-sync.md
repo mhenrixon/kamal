@@ -5,7 +5,7 @@ dash left the basecamp/kamal fork network, the `upstream` remote was removed, an
 `dash` integration branch was fast-forwarded into `main` and deleted. `main` is the only
 long-lived branch; everything lands there via PR. The upstream-owned duplicate files
 (`kamal.gemspec`, `bin/release`, `bin/kamal`) were deleted; `bin/release-dash` was replaced
-by `rake release[X.Y.Z]` + trusted publishing (`.github/workflows/release.yml`).
+by `bin/release` → `rake release[X.Y.Z]` + trusted publishing (`.github/workflows/release.yml`).
 
 If a basecamp/kamal fix is ever wanted, cherry-pick it deliberately from a fresh clone of
 their repo — do not re-add an `upstream` remote or resurrect the mirror-branch model.
