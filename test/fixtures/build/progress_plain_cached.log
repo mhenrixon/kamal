@@ -1,0 +1,94 @@
+#0 building with "dash-builder" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 759B done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 0.3s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#3 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/ruby:3.3-slim
+#4 DONE 0.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 importing cache manifest from registry.example.com/app-cache
+#6 inferred cache manifest type: application/vnd.oci.image.manifest.v1+json done
+#6 DONE 0.1s
+
+#7 [base 1/2] FROM docker.io/library/ruby:3.3-slim@sha256:79f7a07363931fde1a5b312dee281fd62ddf56c33bdba0c2622af9b4621182fb
+#7 resolve docker.io/library/ruby:3.3-slim@sha256:79f7a07363931fde1a5b312dee281fd62ddf56c33bdba0c2622af9b4621182fb 0.0s done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 1.56kB done
+#8 DONE 0.0s
+
+#9 [stage-2 1/3] COPY --from=build /usr/local/bundle /usr/local/bundle
+#9 CACHED
+
+#10 [build 1/5] RUN apt-get update -qq &&     apt-get install --no-install-recommends -y build-essential &&     rm -rf /var/lib/apt/lists/*
+#10 CACHED
+
+#11 [build 3/5] RUN --mount=type=cache,target=/usr/local/bundle/cache     bundle install &&     rm -rf "/usr/local/bundle"/ruby/*/cache
+#11 CACHED
+
+#12 [build 5/5] RUN echo "precompiling assets" && sleep 3
+#12 CACHED
+
+#13 [build 4/5] COPY . .
+#13 CACHED
+
+#14 [build 2/5] COPY Gemfile Gemfile.lock ./
+#14 CACHED
+
+#15 [stage-2 2/3] COPY --from=build /rails /rails
+#15 CACHED
+
+#16 [base 2/2] WORKDIR /rails
+#16 CACHED
+
+#17 [stage-2 3/3] RUN useradd rails --create-home --shell /bin/bash && chown -R rails:rails /rails
+#17 CACHED
+
+#18 exporting to image
+#18 exporting layers done
+#18 exporting manifest sha256:47856ec3de20916c39fab93bc5f4b49db5703dd8fcdec2d48d89b23d7dd17fb6 done
+#18 exporting config sha256:9508527c3e6782ee76e0f534546b48779fe6047ee23a7dec0c912ffa457d8492 done
+#18 exporting attestation manifest sha256:257a34c06450e011ea5b97226f0e3afaddba94aafafd7e8797ffdcea24fe4cdf 0.0s done
+#18 exporting manifest list sha256:c7db27cb88e7a9d36540d42c49b243b37f8aa7388b3ec1c0cd096e0df990643d 0.0s done
+#18 pushing layers 0.0s done
+#18 pushing manifest for registry.example.com/app:999@sha256:c7db27cb88e7a9d36540d42c49b243b37f8aa7388b3ec1c0cd096e0df990643d
+#18 pushing layers 0.0s done
+#18 pushing manifest for registry.example.com/app:999@sha256:c7db27cb88e7a9d36540d42c49b243b37f8aa7388b3ec1c0cd096e0df990643d 0.0s done
+#18 pushing manifest for registry.example.com/app:latest@sha256:c7db27cb88e7a9d36540d42c49b243b37f8aa7388b3ec1c0cd096e0df990643d 0.0s done
+#18 DONE 0.2s
+
+#19 exporting cache to registry
+#19 preparing build cache for export
+#19 preparing build cache for export 0.5s done
+#19 sending cache export
+#19 sending cache export 0.0s done
+#19 writing layer sha256:13242ab80d6e7e6356ba3e018fdb9056fb1ddc75082939203d810fb5e8e408c8 done
+#19 writing layer sha256:04ae41c5aa9704ef45e5f593c5c0cc92c3182ed0ab76c00973705a38ee80d593 done
+#19 writing layer sha256:4f4fb700ef54461cfa02571ae0db9a0dc1e0cdb5577484a6d75e68dc38e8acc1 done
+#19 writing layer sha256:51fca858ec506b1aed0d8ea4b70c4cf0ee9656238df91953d711f10168fbdb22 done
+#19 writing layer sha256:5d30496bc612ccd338a15b496cb8c06142b59ae0dea399ec630b0f32bce0c0ee done
+#19 writing layer sha256:6e6d5ef18ff9a4f102fa5619e5f386b2476d50cf7bed81ddbc06afefb54fdb01 done
+#19 writing layer sha256:7016af2e43167605ee9cbf21d0f7b64d7d61a5efbf1d214de7a64b7adcbecc5e done
+#19 writing layer sha256:741334df1f13d10ca0d4cf073b4f0baa52263d1d0ceec372ac2059f51e946af7 done
+#19 writing layer sha256:76bb51b818fb752b1b737b8071c3f85ae2abf08de77a0252c50a799eb01280c8 done
+#19 writing layer sha256:b70b2396e329885a9c02c47a005bc8252d2f16fff88ee812548418ecdf6121be done
+#19 writing layer sha256:bf7af0229701decd1b9f42143504fc8f69e5664c37e57001d198e731e4f86c2e done
+#19 writing layer sha256:c9e4b74173ff65a801aded059c9eb8fab94e5803c93320f25191858eff95a7ea done
+#19 writing layer sha256:d4606d4bb396d1500c0fe547deaeaecb55157a616f42a2f8a5d9615404035fc7 done
+#19 writing layer sha256:ff2776c617309ec8e9f23622e0dbd2fa4cbfdeec3da0ad7058f3cb3921735853 done
+#19 writing config sha256:80c253476fa3ff92760b5e18db7dd69ede180e165f1c5766590fb79a74794b6e done
+#19 writing cache image manifest sha256:76fa94018ce0595b8c9d24210244196d9e7f218d0b34a52c024deb3e5b3713a2 done
+#19 DONE 0.5s

@@ -26,7 +26,7 @@ class CliBuildTest < CliTestCase
         assert_match /Cloning repo into build directory/, output
         assert_match /git -C #{Dir.tmpdir}\/kamal-clones\/app-#{pwd_sha} clone #{Dir.pwd}/, output
         assert_match /docker --version && docker buildx version/, output
-        assert_match /docker buildx build --output=type=registry --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output
+        assert_match /docker buildx build --output=type=registry --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output
       end
     end
   end
@@ -48,7 +48,7 @@ class CliBuildTest < CliTestCase
         # so the remote builder can push to the registry through the local credentials.
         assert_match "Running docker login -u [REDACTED] -p [REDACTED] as ", output
         assert_match "docker buildx inspect kamal-remote-ssh---app-1-1-1-5 | grep -q Endpoint:.*kamal-remote-ssh---app-1-1-1-5-context && docker context inspect kamal-remote-ssh---app-1-1-1-5-context --format '{{.Endpoints.docker.Host}}' | grep -xq ssh://app@1.1.1.5 || (echo no compatible builder && exit 1)", output
-        assert_match "Command: ( export BUILDKIT_NO_CLIENT_TOKEN=\"1\" ; docker buildx build --output=type=registry --platform linux/arm64 --builder kamal-remote-ssh---app-1-1-1-5 -t dhh/app:999 -t dhh/app:latest --label service=\"app\" --file Dockerfile . 2>&1 )", output
+        assert_match "Command: ( export BUILDKIT_NO_CLIENT_TOKEN=\"1\" ; docker buildx build --output=type=registry --progress=plain --platform linux/arm64 --builder kamal-remote-ssh---app-1-1-1-5 -t dhh/app:999 -t dhh/app:latest --label service=\"app\" --file Dockerfile . 2>&1 )", output
       end
     end
   end
@@ -92,7 +92,7 @@ class CliBuildTest < CliTestCase
         assert_match /Cloning repo into build directory/, output
         assert_match /git -C #{Dir.tmpdir}\/kamal-clones\/app-#{pwd_sha} clone #{Dir.pwd}/, output
         assert_match /docker --version && docker buildx version/, output
-        assert_match /docker buildx build --output=type=docker --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output
+        assert_match /docker buildx build --output=type=docker --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output
       end
     end
   end
@@ -117,7 +117,7 @@ class CliBuildTest < CliTestCase
       SSHKit::Backend::Abstract.any_instance.expects(:execute).with(:git, "-C", build_directory, :gc, "--auto", "--quiet")
 
       SSHKit::Backend::Abstract.any_instance.expects(:execute)
-        .with(:docker, :buildx, :build, "--output=type=registry", "--platform", "linux/amd64", "--builder", "kamal-local-docker-container", "-t", "dhh/app:999", "-t", "dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {})
+        .with(:docker, :buildx, :build, "--output=type=registry", "--progress=plain", "--platform", "linux/amd64", "--builder", "kamal-local-docker-container", "-t", "dhh/app:999", "-t", "dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {}, interaction_handler: instance_of(Dash::Build::ProgressParser))
 
       SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
         .with(:git, "-C", anything, :"rev-parse", :HEAD)
@@ -134,6 +134,38 @@ class CliBuildTest < CliTestCase
     end
   end
 
+  test "a standalone push prints the build rows it measured" do
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    stub_build_stream "progress_plain_success"
+
+    run_command("push", fixture: :without_clone).tap do |output|
+      assert_match(/^  Build$/, output)
+      assert_match(/^    build context\s+0\.2s \(25\.2MB\)$/, output)
+      assert_match(/^    \[build 1\/5\] RUN apt-get update -qq && apt-get install --n\.\.\.\s+13\.8s$/, output)
+      assert_match(/^    cached steps\s+0 of 10$/, output)
+    end
+  end
+
+  test "a build that fails still leaves the step that broke in the report" do
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    stub_build_stream "progress_plain_failed", failing: true
+
+    assert_raises(SSHKit::Command::Failed) { run_command("push", fixture: :without_clone) }
+
+    assert_equal "[4/5] RUN bundle install --frozen && exit 7", DASH.report.build.failed_steps.sole.label
+  end
+
+  test "the pack builder streams no buildx progress, so it gets no parser" do
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+
+    run_command("push", fixture: :with_pack_builder).tap do |output|
+      assert_match(/pack build dhh\/app/, output)
+      assert_no_match(/^  Build$/, output)
+    end
+
+    assert_nil DASH.report.build
+  end
+
   test "push without clone" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
 
@@ -141,7 +173,7 @@ class CliBuildTest < CliTestCase
       assert_no_match /Cloning repo into build directory/, output
       assert_hook_ran "pre-build", output
       assert_match /docker --version && docker buildx version/, output
-      assert_match /docker buildx build --output=type=registry --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile . 2>&1 as .*@localhost/, output
+      assert_match /docker buildx build --output=type=registry --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile . 2>&1 as .*@localhost/, output
     end
   end
 
@@ -151,7 +183,7 @@ class CliBuildTest < CliTestCase
     run_command("push", "--no-cache", "--verbose", fixture: :without_clone).tap do |output|
       assert_hook_ran "pre-build", output
       assert_match /docker --version && docker buildx version/, output
-      assert_match /docker buildx build --output=type=registry --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile --no-cache . 2>&1 as .*@localhost/, output
+      assert_match /docker buildx build --output=type=registry --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999 -t dhh\/app:latest --label service="app" --file Dockerfile --no-cache . 2>&1 as .*@localhost/, output
     end
   end
 
@@ -224,7 +256,7 @@ class CliBuildTest < CliTestCase
         .returns("")
 
       SSHKit::Backend::Abstract.any_instance.expects(:execute)
-        .with(:docker, :buildx, :build, "--output=type=registry", "--platform", "linux/amd64", "--builder", "kamal-local-registry-docker-container", "-t", "localhost:5000/dhh/app:999", "-t", "localhost:5000/dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {})
+        .with(:docker, :buildx, :build, "--output=type=registry", "--progress=plain", "--platform", "linux/amd64", "--builder", "kamal-local-registry-docker-container", "-t", "localhost:5000/dhh/app:999", "-t", "localhost:5000/dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {}, interaction_handler: instance_of(Dash::Build::ProgressParser))
 
       run_command("push", fixture: :with_local_registry_and_accessories).tap do |output|
         assert_match /WARN Missing compatible builder, so creating a new one first/, output
@@ -263,7 +295,7 @@ class CliBuildTest < CliTestCase
         .returns("")
 
       SSHKit::Backend::Abstract.any_instance.expects(:execute)
-        .with(:docker, :buildx, :build, "--output=type=registry", "--platform", "linux/amd64", "--builder", "kamal-local-docker-container", "-t", "dhh/app:999", "-t", "dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {})
+        .with(:docker, :buildx, :build, "--output=type=registry", "--progress=plain", "--platform", "linux/amd64", "--builder", "kamal-local-docker-container", "-t", "dhh/app:999", "-t", "dhh/app:latest", "--label", "service=\"app\"", "--file", "Dockerfile", ".", "2>&1", env: {}, interaction_handler: instance_of(Dash::Build::ProgressParser))
 
       run_command("push").tap do |output|
         assert_match /WARN Missing compatible builder, so creating a new one first/, output
@@ -405,7 +437,7 @@ class CliBuildTest < CliTestCase
       run_command("dev", "--verbose").tap do |output|
         assert_no_match(/Cloning repo into build directory/, output)
         assert_match(/docker --version && docker buildx version/, output)
-        assert_match(/docker buildx build --output=type=docker --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output)
+        assert_match(/docker buildx build --output=type=docker --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output)
       end
     end
   end
@@ -417,7 +449,7 @@ class CliBuildTest < CliTestCase
       run_command("dev", "--output=local", "--verbose").tap do |output|
         assert_no_match(/Cloning repo into build directory/, output)
         assert_match(/docker --version && docker buildx version/, output)
-        assert_match(/docker buildx build --output=type=local --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output)
+        assert_match(/docker buildx build --output=type=local --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile \. 2>&1 as .*@localhost/, output)
       end
     end
   end
@@ -429,7 +461,7 @@ class CliBuildTest < CliTestCase
       run_command("dev", "--no-cache", "--verbose").tap do |output|
         assert_no_match(/Cloning repo into build directory/, output)
         assert_match(/docker --version && docker buildx version/, output)
-        assert_match(/docker buildx build --output=type=docker --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile --no-cache \. 2>&1 as .*@localhost/, output)
+        assert_match(/docker buildx build --output=type=docker --progress=plain --platform linux\/amd64 --builder kamal-local-docker-container -t dhh\/app:999-dirty -t dhh\/app:latest-dirty --label service="app" --file Dockerfile --no-cache \. 2>&1 as .*@localhost/, output)
       end
     end
   end
@@ -515,6 +547,17 @@ class CliBuildTest < CliTestCase
         # And the remote builder push still happens with BUILDKIT_NO_CLIENT_TOKEN.
         assert_match "BUILDKIT_NO_CLIENT_TOKEN=\"1\"", output
       end
+    end
+
+    # The Printer backend does not run commands, so it never feeds an interaction
+    # handler the way SSHKit's local backend does. Replay a real buildx stream instead.
+    def stub_build_stream(fixture, failing: false)
+      log = File.read("test/fixtures/build/#{fixture}.log")
+
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command)
+      build = SSHKit::Backend::Printer.any_instance.stubs(:execute_command)
+        .with { |command| command.to_command.include?("buildx build") && command.on_stdout(nil, log).then { true } }
+      build.raises(SSHKit::Command::Failed.new("exit status: 1")) if failing
     end
 
     def run_command(*command, fixture: :with_accessories)

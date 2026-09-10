@@ -1066,6 +1066,27 @@ class CliMainTest < CliTestCase
     end
   end
 
+  test "the build rows print under the build phase of the deploy table" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    DASH.report.build = build_report_from_fixture
+
+    run_command("deploy").tap do |output|
+      assert_match /\n  Build and push app image\s+\d+\.\ds\n    build context\s+0\.2s \(25\.2MB\)\n/, output
+      assert_match /\n    \[build 1\/5\] RUN apt-get update -qq && apt-get install --n\.\.\.\s+13\.8s\n/, output
+      assert_match /\n    cached steps\s+0 of 10\n/, output
+      assert_match /\n    export \+ push\s+1\.2s \(cache export 7\.2s\)\n/, output
+      assert_operator output.index("    export + push"), :<, output.index("\n  Boot ")
+    end
+  end
+
+  test "a deploy with nothing measured prints the table without build rows" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    run_command("deploy").tap do |output|
+      assert_match /\n  Build and push app image\s+\d+\.\ds\n  Acquire deploy lock\s/, output
+    end
+  end
+
   # The deploy report is only worth having if it is free. Every command a deploy issues is
   # pinned here, so a measurement that quietly costs an extra SSH round trip cannot land
   # unnoticed — and a deliberate reduction has to be explained in the same commit that

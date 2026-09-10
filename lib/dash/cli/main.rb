@@ -33,7 +33,10 @@ class Dash::Cli::Main < Dash::Cli::Base
           timed("Pull app image") { invoke "dash:cli:build:pull", [], invoke_options }
         else
           say "Build and push app image...", :magenta
-          timed("Build and push app image") { invoke "dash:cli:build:deliver", [], invoke_options }
+          timed("Build and push app image") do |entry|
+            DASH.report.build_entry = entry
+            invoke "dash:cli:build:deliver", [], invoke_options
+          end
         end
 
         modify(lock: true) do
@@ -81,7 +84,10 @@ class Dash::Cli::Main < Dash::Cli::Base
           timed("Pull app image") { invoke "dash:cli:build:pull", [], invoke_options }
         else
           say "Build and push app image...", :magenta
-          timed("Build and push app image") { invoke "dash:cli:build:deliver", [], invoke_options }
+          timed("Build and push app image") do |entry|
+            DASH.report.build_entry = entry
+            invoke "dash:cli:build:deliver", [], invoke_options
+          end
         end
 
         modify(lock: true) do

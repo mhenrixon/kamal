@@ -93,6 +93,13 @@ class Dash::Timings
     @mutex.synchronize { @entries.any? }
   end
 
+  # Where an entry's row sits in #lines, so Dash::Report can splice its build rows in
+  # under the phase they belong to. Identity, not equality: two phases of the same name
+  # and duration are equal as Structs but are not the same row.
+  def index_of(entry)
+    @mutex.synchronize { @entries.index { |candidate| candidate.equal?(entry) } }
+  end
+
   def lines
     with_totals do |entry, totals|
       line = format("  %s%-36s %6.1fs", "  " * entry.depth, entry.name, entry.seconds.to_f)

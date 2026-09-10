@@ -1,0 +1,70 @@
+#0 building with "dash-builder" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile.fail
+#1 transferring dockerfile: 192B done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 0.3s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32
+#3 resolve docker.io/docker/dockerfile:1@sha256:ecfaec9ed6d810b56388c508f4121597bfbba70d41a6dfeee4d8cad5f295fc32 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/ruby:3.3-slim
+#4 DONE 0.2s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 1.75kB done
+#6 DONE 0.0s
+
+#7 [1/5] FROM docker.io/library/ruby:3.3-slim@sha256:79f7a07363931fde1a5b312dee281fd62ddf56c33bdba0c2622af9b4621182fb
+#7 resolve docker.io/library/ruby:3.3-slim@sha256:79f7a07363931fde1a5b312dee281fd62ddf56c33bdba0c2622af9b4621182fb 0.0s done
+#7 DONE 0.0s
+
+#8 [2/5] WORKDIR /rails
+#8 CACHED
+
+#9 [3/5] COPY Gemfile Gemfile.lock ./
+#9 DONE 0.0s
+
+#10 [4/5] RUN bundle install --frozen && exit 7
+#10 0.110 Bundler 2.5.22 is running, but your lockfile was generated with 2.5.3. Installing Bundler 2.5.3 and restarting using that version.
+#10 0.110 [DEPRECATED] The `--frozen` flag is deprecated because it relies on being remembered across bundler invocations, which bundler will no longer do in future versions. Instead please use `bundle config set frozen true`, and stop using this flag
+#10 1.718 Fetching gem metadata from https://rubygems.org/.
+#10 1.772 Fetching bundler 2.5.3
+#10 2.059 Installing bundler 2.5.3
+#10 2.149 [DEPRECATED] The `--frozen` flag is deprecated because it relies on being remembered across bundler invocations, which bundler will no longer do in future versions. Instead please use `bundle config set frozen true`, and stop using this flag
+#10 2.216 The list of sources changed, but the lockfile can't be updated because frozen
+#10 2.216 mode is set
+#10 2.216 
+#10 2.216 Run `bundle install` elsewhere and add the updated Gemfile to version control.
+#10 2.216 If this is a development machine, remove the Gemfile.lock freeze by running
+#10 2.216 `bundle config set frozen false`.
+#10 ERROR: process "/bin/sh -c bundle install --frozen && exit 7" did not complete successfully: exit code: 16
+------
+ > [4/5] RUN bundle install --frozen && exit 7:
+.
+1.772 Fetching bundler 2.5.3
+2.059 Installing bundler 2.5.3
+2.149 [DEPRECATED] The `--frozen` flag is deprecated because it relies on being remembered across bundler invocations, which bundler will no longer do in future versions. Instead please use `bundle config set frozen true`, and stop using this flag
+2.216 The list of sources changed, but the lockfile can't be updated because frozen
+2.216 mode is set
+2.216 
+2.216 Run `bundle install` elsewhere and add the updated Gemfile to version control.
+2.216 If this is a development machine, remove the Gemfile.lock freeze by running
+2.216 `bundle config set frozen false`.
+------
+Dockerfile.fail:5
+--------------------
+   3 |     WORKDIR /rails
+   4 |     COPY Gemfile Gemfile.lock ./
+   5 | >>> RUN bundle install --frozen && exit 7
+   6 |     COPY . .
+   7 |     
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c bundle install --frozen && exit 7" did not complete successfully: exit code: 16

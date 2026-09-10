@@ -1,0 +1,89 @@
+#0 building with "dash-builder" instance using docker-container driver
+
+#1 [internal] load build definition from Dockerfile.multi
+#1 transferring dockerfile: 221B done
+#1 DONE 0.0s
+
+#2 [linux/amd64 internal] load metadata for docker.io/library/alpine:3.20
+#2 ...
+
+#3 [auth] library/alpine:pull token for registry-1.docker.io
+#3 DONE 0.0s
+
+#4 [linux/arm64 internal] load metadata for docker.io/library/alpine:3.20
+#4 ...
+
+#2 [linux/amd64 internal] load metadata for docker.io/library/alpine:3.20
+#2 DONE 1.5s
+
+#4 [linux/arm64 internal] load metadata for docker.io/library/alpine:3.20
+#4 DONE 1.5s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 2B done
+#5 DONE 0.0s
+
+#6 [linux/arm64 build 1/3] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc 0.0s done
+#6 DONE 0.1s
+
+#7 [linux/amd64 build 1/3] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#7 resolve docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc 0.0s done
+#7 sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471 0B / 3.63MB 0.2s
+#7 ...
+
+#6 [linux/arm64 build 1/3] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#6 sha256:3f26bc2dec0b515f1c2818f6e13a8f1da1f88179a008445d4e587233386bff78 4.09MB / 4.09MB 0.4s done
+#6 extracting sha256:3f26bc2dec0b515f1c2818f6e13a8f1da1f88179a008445d4e587233386bff78 0.1s done
+#6 DONE 0.5s
+
+#7 [linux/amd64 build 1/3] FROM docker.io/library/alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc
+#7 sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471 3.63MB / 3.63MB 0.3s done
+#7 extracting sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471
+#7 extracting sha256:25f1d6b1951ac8eb3740558fe94cb83d377bdadf95fd9f98b50d2e1b96130471 0.1s done
+#7 DONE 0.6s
+
+#8 [linux/amd64 build 2/3] RUN apk add --no-cache ca-certificates
+#8 0.069 fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64/APKINDEX.tar.gz
+#8 0.428 fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/community/x86_64/APKINDEX.tar.gz
+#8 0.680 (1/1) Installing ca-certificates (20260413-r0)
+#8 0.731 Executing busybox-1.36.1-r31.trigger
+#8 0.744 Executing ca-certificates-20260413-r0.trigger
+#8 0.828 OK: 8 MiB in 15 packages
+#8 DONE 0.9s
+
+#9 [linux/arm64 build 2/3] RUN apk add --no-cache ca-certificates
+#9 0.052 fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/main/aarch64/APKINDEX.tar.gz
+#9 0.403 fetch https://dl-cdn.alpinelinux.org/alpine/v3.20/community/aarch64/APKINDEX.tar.gz
+#9 0.673 (1/1) Installing ca-certificates (20260413-r0)
+#9 0.715 Executing busybox-1.36.1-r31.trigger
+#9 0.717 Executing ca-certificates-20260413-r0.trigger
+#9 0.731 OK: 10 MiB in 15 packages
+#9 DONE 0.9s
+
+#10 [linux/arm64 build 3/3] RUN echo building > /tmp/marker
+#10 DONE 0.1s
+
+#11 [linux/amd64 build 3/3] RUN echo building > /tmp/marker
+#11 DONE 0.1s
+
+#12 [linux/arm64 stage-1 2/2] COPY --from=build /tmp/marker /marker
+#12 DONE 0.0s
+
+#13 [linux/amd64 stage-1 2/2] COPY --from=build /tmp/marker /marker
+#13 DONE 0.0s
+
+#14 exporting to image
+#14 exporting layers 0.1s done
+#14 exporting manifest sha256:9e9ccf7e80ebfd3618b2e2b9b9329a8b9cf01fa2f7a523b30de54386347f6de9
+#14 exporting manifest sha256:9e9ccf7e80ebfd3618b2e2b9b9329a8b9cf01fa2f7a523b30de54386347f6de9 0.0s done
+#14 exporting config sha256:214d2dee95b1b5c5d9e14078323ae98bda65f37d2e0cdbb0ec12bbc8c689c4c3 0.0s done
+#14 exporting attestation manifest sha256:fbf905b03f0da03c985234f2624eb725bb3122b41bbbb2d535632303d9974db4 done
+#14 exporting manifest sha256:8aed681aa07eb5613108937ecd923edbd42393321445cbab3e58f3f0f49df479 done
+#14 exporting config sha256:db3950eb165c10a3cdad900c4ba33f7cc0c72a93bb24905162351becf8af5180 done
+#14 exporting attestation manifest sha256:d2c4fbc07f995092e15fbed12d9e10cd1ee4e72406d964579a9b577f6feab2af 0.0s done
+#14 exporting manifest list sha256:1a638cd8c4a4307eeb4c17e2a5957516f001b810fb9d55393bac922852cf3e59 0.0s done
+#14 pushing layers 0.1s done
+#14 pushing manifest for registry.example.com/multi:999@sha256:1a638cd8c4a4307eeb4c17e2a5957516f001b810fb9d55393bac922852cf3e59
+#14 pushing manifest for registry.example.com/multi:999@sha256:1a638cd8c4a4307eeb4c17e2a5957516f001b810fb9d55393bac922852cf3e59 0.0s done
+#14 DONE 0.3s

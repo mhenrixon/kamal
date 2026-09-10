@@ -161,6 +161,17 @@ class TimingsTest < ActiveSupport::TestCase
     assert_equal 0.75, @timings.to_h.sole[:connect_seconds]
   end
 
+  test "index_of finds an entry's row by identity, not by value" do
+    first = second = nil
+
+    @timings.phase("Boot") { |entry| first = entry }
+    @timings.phase("Boot") { |entry| second = entry }
+
+    assert_equal 0, @timings.index_of(first)
+    assert_equal 1, @timings.index_of(second)
+    assert_nil @timings.index_of(Dash::Timings::Entry.new("Boot"))
+  end
+
   test "to_h exports every entry with its subtree command totals" do
     @timings.record("Startup (load, config)", 1.0)
 
