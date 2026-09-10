@@ -1,0 +1,24 @@
+test/cli/build_test.rb
+  s_2603bd321e1b37::t_2f88e71dc4eebd 554-557,560,563-568
+lib/dash/report.rb
+  s_2603bd321e1b37::t_ce672e288bd2eb 41,45-47,52-57
+test/report_test.rb
+  s_2603bd321e1b37::t_67c6e724c15768 66-70,72-93
+  s_2603bd321e1b37::t_8f47ea9aa55763 71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "a63c8452bb47e16b4e67dbfde2ee4163a4067953",
+  "prompts": {},
+  "sessions": {
+    "s_2603bd321e1b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c71c9f9-0a28-4753-997c-0d7b587f4f8c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
