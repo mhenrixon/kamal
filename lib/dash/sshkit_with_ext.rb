@@ -6,6 +6,27 @@ require "json"
 require "resolv"
 require "concurrent/atomic/semaphore"
 
+# Deploy-report timing reaches into dash's runtime from code that runs for everyone else
+# using SSHKit in this process too, and this file can be required on its own — without the
+# gem's autoloader and without the DASH commander. So every reach is optional, and it is
+# funnelled through here rather than repeated at each hook, where one site would sooner or
+# later forget the guard and take down every parallel run with a NameError.
+module DashTimings
+  class << self
+    def timings
+      DASH.timings if defined?(DASH)
+    end
+
+    def current_entry
+      Dash::Timings.current_entry if defined?(Dash::Timings)
+    end
+
+    def current_entry=(entry)
+      Dash::Timings.current_entry = entry if defined?(Dash::Timings)
+    end
+  end
+end
+
 class SSHKit::Backend::Abstract
   def capture_with_info(*args, **kwargs)
     capture(*args, **kwargs, verbosity: Logger::INFO)
@@ -69,9 +90,6 @@ class SSHKit::Backend::Abstract
   # this thread, so a phase can report how much of its total was spent waiting on round
   # trips rather than on the app. Nothing is executed that would not have run anyway —
   # this only stamps the commands dash was already issuing.
-  #
-  # `defined?(DASH)` because SSHKit is usable without the commander: tests build backends
-  # directly, and the gem must not blow up in that shape.
   module TimedCommands
     private
       def create_command_and_execute(args, options)
@@ -79,9 +97,7 @@ class SSHKit::Backend::Abstract
 
         super
       ensure
-        if defined?(DASH)
-          DASH.timings.attribute_command(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, local: !!host&.local?)
-        end
+        DashTimings.timings&.attribute_command(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, local: !!host&.local?)
       end
   end
   prepend TimedCommands
@@ -202,7 +218,7 @@ class SSHKit::Backend::Netssh
 
         super
       ensure
-        DASH.timings.attribute_connect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) if defined?(DASH)
+        DashTimings.timings&.attribute_connect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started)
       end
   end
   prepend TimedConnects
@@ -274,12 +290,12 @@ class SSHKit::Runner::Parallel
       # A new thread starts with none of its parent's thread-locals, so the timing entry
       # has to be handed over explicitly or every command run on a host would be
       # attributed to no phase at all.
-      timing_entry = Dash::Timings.current_entry
+      timing_entry = DashTimings.current_entry
 
       threads = hosts.map do |host|
         Thread.new(host) do |h|
           Thread.current.report_on_exception = false
-          Dash::Timings.current_entry = timing_entry
+          DashTimings.current_entry = timing_entry
           backend(h, &block).run
         rescue ::StandardError => e
           e2 = SSHKit::Runner::ExecuteError.new e
@@ -358,12 +374,12 @@ module SSHKitDslRoles
   def on_roles(roles, hosts:, parallel: true, rolling: false, &block)
     if parallel
       # See CompleteAll#execute: thread-locals do not cross Thread.new.
-      timing_entry = Dash::Timings.current_entry
+      timing_entry = DashTimings.current_entry
 
       threads = roles.filter_map do |role|
         if (role_hosts = role.hosts & hosts).any?
           Thread.new do
-            Dash::Timings.current_entry = timing_entry
+            DashTimings.current_entry = timing_entry
             on(role_hosts, rolling ? role.boot_runner_options(role_hosts) : {}) { |host| instance_exec(host, role, &block) }
           rescue StandardError => e
             raise SSHKit::Runner::ExecuteError.new(e), "Exception while executing on #{role}: #{e.message}"

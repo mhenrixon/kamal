@@ -5,6 +5,11 @@ require "test_helper"
 # threads: SSHKit runs one per host, and a thread starts with none of its parent's
 # thread-locals, so without explicit propagation every boot command would be attributed
 # to nothing at all.
+#
+# Commands run through the Printer backend the whole suite uses. Connects cannot — the
+# Printer never opens one — so the connect hook is driven against a real Netssh backend
+# with `Net::SSH.start` stubbed, which is the only place in the suite that exercises the
+# prepend chain TimedConnects -> LimitConcurrentStartsInstance -> DnsRetriableConnection.
 class SshkitTimingTest < ActiveSupport::TestCase
   include SSHKit::DSL
 
@@ -79,8 +84,32 @@ class SshkitTimingTest < ActiveSupport::TestCase
         end
       end
 
-      assert_equal [ entry, entry ], Array.new(2) { seen.pop }
+      # Bounded: an unpropagated entry would otherwise block the pop forever and hang
+      # the suite instead of failing it. Queue#pop returns nil on timeout.
+      assert_equal [ entry, entry ], Array.new(2) { seen.pop(timeout: 5) }
     end
+  end
+
+  test "an SSH connect is attributed to the current phase" do
+    Net::SSH.stubs(:start).returns(:session)
+    backend = SSHKit::Backend::Netssh.new(SSHKit::Host.new("1.1.1.1"))
+
+    DASH.timings.phase("Boot") { backend.send(:connect_ssh, "1.1.1.1", "root", {}) }
+
+    entry = DASH.timings.to_h.sole
+
+    assert_operator entry[:connect_seconds], :>, 0
+    # A connect is not a command: it must not inflate the round-trip count.
+    assert_equal 0, entry[:commands]
+  end
+
+  test "an SSH connect outside a phase is not attributed" do
+    Net::SSH.stubs(:start).returns(:session)
+    backend = SSHKit::Backend::Netssh.new(SSHKit::Host.new("1.1.1.1"))
+
+    backend.send(:connect_ssh, "1.1.1.1", "root", {})
+
+    assert_not DASH.timings.any?
   end
 
   private
