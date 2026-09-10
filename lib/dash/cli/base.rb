@@ -152,7 +152,7 @@ module Dash::Cli
         @print_runtime_depth -= 1
         runtime = Time.now - started_at
         puts "  Finished all in #{sprintf("%.1f seconds", runtime)}"
-        puts DASH.timings.lines if @print_runtime_depth.zero? && DASH.timings.any?
+        puts DASH.report.lines if @print_runtime_depth.zero? && DASH.timings.any?
       end
 
       # Everything that happened before the first phase could be timed: requiring the gem,

@@ -20,6 +20,15 @@ class CliTestCase < ActiveSupport::TestCase
   end
 
   private
+    # A real `docker buildx build --progress=plain` stream, parsed by the same handler a
+    # build attaches. Cheaper than a Docker daemon and it proves the wiring end to end.
+    def build_report_from_fixture(name = "progress_plain_success")
+      Dash::Build::ProgressParser.new.tap do |parser|
+        parser.on_data(nil, :stdout, File.read("test/fixtures/build/#{name}.log"), nil)
+        parser.finish
+      end.result
+    end
+
     def fail_hook(hook)
       @executions = []
       Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)

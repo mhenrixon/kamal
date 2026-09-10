@@ -17,6 +17,11 @@ class Dash::Commands::Builder::Base < Dash::Commands::Base
   def push(export_action = "registry", tag_as_dirty: false, no_cache: false)
     docker :buildx, :build,
       "--output=type=#{export_action}",
+      # Plain progress is what dash parses into the build rows of the deploy report
+      # (Dash::Build::ProgressParser). buildx already falls back to it when stdout is a
+      # pipe, which it always is under SSHKit — this only pins it so the format cannot
+      # change under us.
+      "--progress=plain",
       *platform_options(arches),
       *([ "--builder", builder_name ] unless docker_driver?),
       *build_tag_options(tag_as_dirty: tag_as_dirty),

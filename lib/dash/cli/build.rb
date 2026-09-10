@@ -37,6 +37,9 @@ class Dash::Cli::Build < Dash::Cli::Base
       say "Building with uncommitted changes:\n #{uncommitted_changes}", :yellow
     end
 
+    parser = build_progress_parser
+    handler = handler_for(parser)
+
     forward_local_registry_port_for_remote_builder do
       with_env(DASH.config.builder.secrets) do
         run_locally do
@@ -60,11 +63,13 @@ class Dash::Cli::Build < Dash::Cli::Base
           push = DASH.builder.push(cli.options[:output], no_cache: cli.options[:no_cache])
 
           DASH.with_verbosity(:debug) do
-            Dir.chdir(DASH.config.builder.build_directory) { execute *push, env: DASH.builder.push_env }
+            Dir.chdir(DASH.config.builder.build_directory) { execute *push, env: DASH.builder.push_env, **handler }
           end
         end
       end
     end
+  ensure
+    record_build_report parser
   end
 
   desc "pull", "Pull app image from registry onto servers"
@@ -147,17 +152,58 @@ class Dash::Cli::Build < Dash::Cli::Base
       say
     end
 
+    parser = build_progress_parser
+    handler = handler_for(parser)
+
     with_env(DASH.config.builder.secrets) do
       run_locally do
         build = DASH.builder.push(cli.options[:output], tag_as_dirty: true, no_cache: cli.options[:no_cache])
         DASH.with_verbosity(:debug) do
-          execute(*build)
+          execute(*build, **handler)
         end
       end
     end
+  ensure
+    record_build_report parser
   end
 
   private
+    # Buildpacks print a total and nothing else, so there is nothing for the parser to
+    # read and no reason to attach it.
+    def build_progress_parser
+      Dash::Build::ProgressParser.new unless DASH.builder.pack?
+    end
+
+    def handler_for(parser)
+      parser ? { interaction_handler: parser } : {}
+    end
+
+    # Runs whether the build succeeded or failed: a partial report naming the step that
+    # broke is exactly what an operator wants from a failed build. Measurement must never
+    # be the reason a build fails, so nothing in here is allowed to raise.
+    def record_build_report(parser)
+      return unless parser
+
+      parser.finish
+      DASH.report.build = parser.result
+
+      say "Deploy report unavailable: #{parser.error.class}: #{parser.error.message}", :yellow if parser.error
+      print_build_report unless DASH.report.build_entry
+    rescue StandardError => e
+      say "Deploy report unavailable: #{e.class}: #{e.message}", :yellow
+      say e.backtrace.join("\n"), :yellow if ENV["VERBOSE"]
+    end
+
+    # A standalone `dash build push` has no phase table to sit under, but a CI pipeline
+    # that splits build from deploy should still see where the build time went.
+    def print_build_report
+      rows = DASH.report.build_lines
+      return if rows.empty?
+
+      puts "  Build"
+      puts rows
+    end
+
     def connect_to_remote_host(remote_host)
       remote_uri = URI.parse(remote_host)
       if remote_uri.scheme == "ssh"
