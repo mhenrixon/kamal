@@ -24,8 +24,10 @@ class Dash::Dockerfile::Context
   ].freeze
 
   # apt takes its options before or after the verb (`apt-get -y install`,
-  # `apt-get -t bookworm-backports install`), so the verb is found past any of them.
-  APT_OPTIONS = /(?:-\S+(?:\s+[^-\s]\S*)?\s+)*/
+  # `apt-get -t bookworm-backports install`), so the verb is found past any of them. A
+  # shell separator is never an option or its value, so `apt-get -y && install` is not
+  # an apt install.
+  APT_OPTIONS = /(?:-[^\s;&|]+(?:\s+[^-\s;&|][^\s;&|]*)?\s+)*/
   APT_INSTALL = [ /\bapt-get\s+#{APT_OPTIONS.source}install\b/, "/var/cache/apt" ].freeze
 
   # A copy that ships the whole tree, so every commit invalidates it and everything

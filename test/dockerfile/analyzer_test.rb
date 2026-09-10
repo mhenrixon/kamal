@@ -300,6 +300,18 @@ class DockerfileAnalyzerTest < ActiveSupport::TestCase
     assert_match "30.0s uncached", analyze_text(text, build: build).find { |f| f.rule == "uncached-install" }.message
   end
 
+  test "a shell separator is not an apt option, and no rule raises on the attempt" do
+    findings = analyze_text("FROM ruby:3.4\nRUN apt-get -y && install\n")
+
+    assert_empty findings.select { |f| %w[ apt-hygiene no-cache-mount ].include?(f.rule) }
+  end
+
+  test "a heredoc RUN may continue an apt command with a backslash" do
+    text = "FROM ruby:3.4\nRUN <<EOF\napt-get install \\\n  --no-install-recommends -y git\nrm -rf /var/lib/apt/lists/*\nEOF\n"
+
+    assert_empty analyze_text(text).select { |f| f.rule == "apt-hygiene" }
+  end
+
   test "ignored rule ids are dropped" do
     rules = analyze("naive_single_stage", ignore: %w[ root-user latest-base ]).map(&:rule)
 

@@ -24,7 +24,7 @@ class Dash::Dockerfile::Rules::AptHygiene < Dash::Dockerfile::Rules::Base
   private
     def problems_in(segments)
       installs = segments.select { |segment| segment.match?(Dash::Dockerfile::Context::APT_INSTALL.first) }
-      last_apt = segments.rindex { |segment| segment.match?(APT_OPERATION) }
+      last_apt = segments.rindex { |segment| segment.match?(APT_OPERATION) } or return []
       cleaned = segments.drop(last_apt + 1).any? { |segment| segment.match?(LIST_CLEANUP) }
 
       problems = []

@@ -115,13 +115,25 @@ class Dash::Dockerfile::Parser
         terminator = (at...lines.size).find { |line| lines[line].strip == delimiter }
         return [ text, index ] unless terminator
 
-        body.concat lines[at...terminator].map(&:strip)
+        body.concat heredoc_commands(lines[at...terminator])
         at = terminator + 1
       end
 
       # Line breaks are kept: in a RUN heredoc each line is its own shell command, and the
       # apt rules need to know where one ends.
       [ [ text, *body ].join("\n"), at ]
+    end
+
+    # Inside the body the shell's own continuation applies: a line ending in `\` is the
+    # same command as the next one.
+    def heredoc_commands(body)
+      body.map(&:strip).each_with_object([]) do |line, commands|
+        if commands.last&.end_with?("\\")
+          commands[-1] = "#{commands.last.delete_suffix("\\").rstrip} #{line}"
+        else
+          commands << line
+        end
+      end
     end
 
     def build_instruction(text, line)
