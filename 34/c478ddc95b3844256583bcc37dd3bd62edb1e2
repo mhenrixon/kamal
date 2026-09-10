@@ -1,0 +1,25 @@
+test/report/writer_test.rb
+  s_8696d9393d8ccc::t_baf11da3acd6a9 125-128,138-147,149
+lib/dash/report/history.rb
+  s_8696d9393d8ccc::t_e41476148f0490 71-75,77-81,86-92
+test/report/history_test.rb
+  s_8696d9393d8ccc::t_baf11da3acd6a9 69-83
+lib/dash/report/writer.rb
+  s_8696d9393d8ccc::t_e41476148f0490 39-46,51,56,61,70-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "34c478ddc95b3844256583bcc37dd3bd62edb1e2",
+  "prompts": {},
+  "sessions": {
+    "s_8696d9393d8ccc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "177fc509-e78f-42f6-a630-0695243799e6",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
