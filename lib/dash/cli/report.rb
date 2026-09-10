@@ -14,8 +14,10 @@ class Dash::Cli::Report < Dash::Cli::Base
   desc "show", "Print the last saved deploy report"
   option :last, type: :numeric, banner: "N", desc: "Print a trend table over the last N reports instead"
   def show
-    if options[:last]
-      print_trend saved.recent(options[:last])
+    if (last = options[:last])
+      return say "--last takes a positive number of reports, got #{last}", :red unless count?(last)
+
+      print_trend saved.recent(last.to_i)
     else
       print_latest saved.recent(1).first
     end
@@ -27,6 +29,12 @@ class Dash::Cli::Report < Dash::Cli::Base
   end
 
   private
+    # Thor's :numeric happily hands over -1 or 2.5, which Array#first turns into a
+    # backtrace. A typo in a flag deserves a sentence, not a stack trace.
+    def count?(value)
+      value.to_i == value && value.to_i > 0
+    end
+
     def saved
       Dash::Report::History.new(reports_directory, destination: DASH.config.destination)
     end

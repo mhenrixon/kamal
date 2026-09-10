@@ -158,9 +158,9 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
     DocsUI::Section("Trends") do
       md <<~'MD'
         Every deploy saves a JSON report, and the next one compares itself with
-        the ones before it. Once a destination has three saved deploys of the
-        same command, four more rules can fire — all informational, all comparing
-        against the median of the last five:
+        the ones before it. Once a destination has three retained reports of the
+        same command that succeeded, four more rules can fire — all
+        informational, all comparing against the median of the last five:
 
         | Rule | What it means |
         |---|---|
@@ -201,7 +201,7 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
       DocsUI::Code(<<~JSON, lexer: :json)
         {
           "schema": 1,
-          "dash_version": "4.2.0",
+          "dash_version": "4.0.8",
           "command": "deploy",
           "service": "app",
           "destination": "production",
@@ -210,10 +210,14 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
           "runtime": 196.2,
           "status": "succeeded",
           "phases": [
+            { "name": "Startup (load, config)", "depth": 0, "seconds": 0.9, "detail": null,
+              "commands": 0, "command_seconds": 0.0, "connect_seconds": 0.0, "local": true },
+            { "name": "Build and push app image", "depth": 0, "seconds": 140.0, "detail": null,
+              "commands": 0, "command_seconds": 0.0, "connect_seconds": 0.0, "local": true },
             { "name": "Boot", "depth": 0, "seconds": 55.2, "detail": null,
               "commands": 12, "command_seconds": 41.0, "connect_seconds": 1.2, "local": false }
           ],
-          "build_phase": 2,
+          "build_phase": 1,
           "build": {
             "context_bytes": 356515840, "context_seconds": 3.2,
             "cached_steps": 9, "total_steps": 14,
@@ -251,7 +255,7 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
       DocsUI::Code(<<~TEXT, lexer: :text)
         dash report                 # the latest report for this destination
         dash report -d production   # …for another destination
-        dash report --last 5        # one row per deploy, oldest first
+        dash report --last 5        # one row per report, oldest first
         dash report path            # where the reports are written
       TEXT
       DocsUI::Code(<<~TEXT, lexer: :text)
@@ -294,6 +298,16 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
         `DASH_ADVICE_WARNINGS` and `DASH_REPORT_PATH`, each with its `KAMAL_*`
         twin. A phase that did not run contributes no variable at all rather than
         a zero that reads as "instant". See [Hooks](/docs/hooks).
+
+        Two things about the ordering are worth knowing:
+
+        - Under `dash setup`, the hook fires from the `deploy` it wraps, before
+          the outer report is finalised. `DASH_REPORT_PATH` and the trend findings
+          are therefore absent from that one hook run — the report itself is
+          written as usual, a moment later.
+        - `status` in the saved report describes the deploy's own phases. A
+          `post-deploy` hook that fails will fail the command, but the deploy
+          before it succeeded, and the report says so.
       MD
     end
   end

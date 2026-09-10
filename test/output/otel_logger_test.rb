@@ -85,19 +85,21 @@ class OutputOtelLoggerTest < ActiveSupport::TestCase
     @logger.finish("modify.kamal", "id", command: "deploy", report: report)
   end
 
+  # BuildKit's own vertices — the export, the context transfer, a metadata lookup — have
+  # no stage or ordinal, so a per-vertex event would ship attributes that mean nothing.
+  # They belong to the summary; only the operator's own steps get their own event.
+  # BuildKit's own vertices — the export, the context transfer, a metadata lookup — have
+  # no stage and no ordinal, so a per-vertex event would ship attributes that mean nothing.
+  # They belong to the summary; only the operator's own steps get an event of their own.
   test "the build ships one summary event and one event per Dockerfile step" do
     @logger.start("modify.kamal", "id", command: "deploy", hosts: [ "1.1.1.1" ])
-    Dash::OtelShipper.any_instance.stubs(:event)
-    Dash::OtelShipper.any_instance.expects(:event).with("dash.build",
-      "dash.build.cached_steps": 0, "dash.build.total_steps": 1, "dash.build.export_seconds": 0.0,
-      "dash.build.cache_export_seconds": 0.0, "dash.build.push_seconds": 0.0,
-      "deployment.id": anything, "deployment.name": "deploy myapp")
-    Dash::OtelShipper.any_instance.expects(:event).with("dash.build.step",
-      "dash.build.stage": "build", "dash.build.ordinal": 1, "dash.build.instruction": "RUN bundle install",
-      "dash.build.seconds": 84.1, "dash.build.cached": false,
-      "deployment.id": anything, "deployment.name": "deploy myapp")
 
-    @logger.finish("modify.kamal", "id", command: "deploy", report: report)
+    events = capture_events { @logger.finish("modify.kamal", "id", command: "deploy", report: report) }
+
+    assert_equal 12.0, events.fetch("dash.build").sole[:"dash.build.export_seconds"]
+    assert_equal 1, events.fetch("dash.build").sole[:"dash.build.total_steps"]
+    assert_equal [ "RUN bundle install" ], events.fetch("dash.build.step").map { |a| a[:"dash.build.instruction"] }
+    assert_equal "deploy myapp", events.fetch("dash.build.step").sole[:"deployment.name"]
   end
 
   test "each piece of advice is shipped so a backend can chart what dash keeps saying" do
@@ -148,12 +150,26 @@ class OutputOtelLoggerTest < ActiveSupport::TestCase
   end
 
   private
+    # Every event the run shipped, grouped by name — so a test can assert what was NOT
+    # shipped as well as what was.
+    def capture_events
+      events = Hash.new { |hash, name| hash[name] = [] }
+      Dash::OtelShipper.any_instance.stubs(:event).with do |name, **attributes|
+        events[name] << attributes
+        true
+      end
+
+      yield
+
+      events
+    end
+
     def report
       timings = Dash::Timings.from_h([
         { name: "Boot", depth: 0, seconds: 55.2, commands: 12, command_seconds: 41.0, connect_seconds: 1.2, local: false } ])
 
       Dash::Report.new(timings: timings).tap do |report|
-        report.build = Dash::Build::Report.new(steps: [ bundle_install_step ])
+        report.build = Dash::Build::Report.new(steps: [ bundle_install_step, export_step ])
         report.advice = [ Dash::Dockerfile::Finding.new(rule: "root-user", severity: :info,
           location: "Dockerfile:9", message: "the final stage sets no USER") ]
       end
@@ -165,5 +181,10 @@ class OutputOtelLoggerTest < ActiveSupport::TestCase
         step.stage, step.ordinal, step.steps_in_stage = "build", 1, 5
         step.seconds = 84.1
       end
+    end
+
+    # BuildKit's own bookkeeping: no stage, no ordinal, nothing the operator wrote.
+    def export_step
+      Dash::Build::Step.new(2, kind: :export, name: "exporting to image").tap { |step| step.seconds = 12.0 }
     end
 end

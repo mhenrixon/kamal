@@ -51,6 +51,30 @@ class ReportHistoryTest < ActiveSupport::TestCase
     end
   end
 
+  # A file can be valid JSON, claim schema 1, and still be nothing dash wrote. Rendering
+  # it would crash `dash report` on a document the operator hand-edited.
+  test "a schema-1 document of the wrong shape is skipped like an unreadable one" do
+    in_history do |directory|
+      FileUtils.mkdir_p directory
+      write directory, "phases-not-a-list.json", schema: 1, destination: nil, phases: "nope"
+      write directory, "phases-not-hashes.json", schema: 1, destination: nil, phases: [ "nope" ]
+      write directory, "advice-not-a-list.json", schema: 1, destination: nil, phases: [], advice: "nope"
+      write directory, "build-not-a-hash.json", schema: 1, destination: nil, phases: [], build: "nope"
+      save directory, "2026-09-10T12-00-00Z-default-deploy.json"
+
+      assert_equal 1, history(directory).recent(5).size
+    end
+  end
+
+  test "a document with no phases at all is still a document" do
+    in_history do |directory|
+      FileUtils.mkdir_p directory
+      write directory, "bare.json", schema: 1, destination: nil, phases: []
+
+      assert_equal 1, history(directory).recent(5).size
+    end
+  end
+
   test "an empty or missing directory simply has no history" do
     in_history do |directory|
       assert_not history(directory).any?
@@ -89,6 +113,10 @@ class ReportHistoryTest < ActiveSupport::TestCase
 
     def history(directory, destination: nil)
       Dash::Report::History.new(directory, destination: destination)
+    end
+
+    def write(directory, name, **document)
+      File.write File.join(directory, name), JSON.generate(document)
     end
 
     def save(directory, name, destination: nil, runtime: 100.0)

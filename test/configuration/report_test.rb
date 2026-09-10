@@ -36,6 +36,14 @@ class ConfigurationReportTest < ActiveSupport::TestCase
     assert_equal 0, config(history: 0).report.history
   end
 
+  # A negative count is a typo, not "keep none": swallowing it would silently stop saving
+  # reports, which is the one thing an operator setting `history` clearly wants.
+  test "a negative history is rejected rather than read as off" do
+    error = assert_raises(Dash::ConfigurationError) { config(history: -1) }
+
+    assert_match "report/history", error.message
+  end
+
   test "ignored rule ids are stringified" do
     assert_equal [ "root-user", "DL3008" ], config(ignore: [ "root-user", "DL3008" ]).report.ignore
   end

@@ -91,6 +91,37 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
+  # started_at is only recorded to the second, and two destinations that differ only in a
+  # character a filename cannot hold sanitize to the same string. Neither run may lose its
+  # report to the other.
+  test "two runs that would share a name each keep their own file" do
+    in_reports_directory do |directory|
+      first = write(directory: directory)
+      second = write(directory: directory)
+      third = write(directory: directory, destination: "eu/west")
+      fourth = write(directory: directory, destination: "eu-west")
+
+      assert_equal 4, [ first, second, third, fourth ].uniq.size
+      assert_equal "2026-09-10T12-00-00Z-default-deploy-2.json", File.basename(second)
+      assert_equal [ nil, nil, "eu/west", "eu-west" ],
+        [ first, second, third, fourth ].map { |path| document(path)[:destination] }
+    end
+  end
+
+  # A deploy interrupted mid-write must not leave a truncated file behind: nothing ever
+  # prunes one, because pruning only counts the reports it could read.
+  test "the file appears whole or not at all" do
+    in_reports_directory do |directory|
+      seen = []
+      Dash::Report::History.any_instance.stubs(:prune).with { seen = Dir.children(directory).sort; true }
+
+      path = write(directory: directory)
+
+      assert_equal [ ".gitignore", File.basename(path) ], seen
+      assert_empty Dir.children(directory).grep_v(/\A\.gitignore\z|\.json\z/)
+    end
+  end
+
   test "the phases, build and advice of the run all land in the document" do
     in_reports_directory do |directory|
       @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }

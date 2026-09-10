@@ -49,9 +49,24 @@ class Dash::Report::History
       document = JSON.parse(File.read(path), symbolize_names: true)
       return unless document.is_a?(Hash) && document[:schema] == Dash::Report::SCHEMA
       return unless document[:destination] == destination
+      return unless well_formed?(document)
 
       [ path, document ]
     rescue StandardError
       nil
+    end
+
+    # Claiming schema 1 is not the same as being one. A hand-edited file that parses but
+    # holds the wrong shapes would crash `dash report` when it came to render, which is a
+    # long way from where the mistake was made — so it is rejected here, with the
+    # unreadable ones, rather than trusted as far as the renderer.
+    def well_formed?(document)
+      list_of_hashes?(document[:phases]) &&
+        (document[:advice].nil? || list_of_hashes?(document[:advice])) &&
+        (document[:build].nil? || document[:build].is_a?(Hash))
+    end
+
+    def list_of_hashes?(value)
+      value.is_a?(Array) && value.all?(Hash)
     end
 end

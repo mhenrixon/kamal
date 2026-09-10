@@ -32,6 +32,7 @@ class CliReportTest < CliTestCase
     lines = run_command("show").lines.map(&:rstrip)
     build = lines.index { |line| line.start_with?("  Build and push app image") }
 
+    assert build, "no build phase row in:\n#{lines.join("\n")}"
     assert_match "[build 1/5] RUN bundle install", lines[build + 1]
     assert_equal "→ copy the manifests first", lines.last.strip
   end
@@ -53,6 +54,13 @@ class CliReportTest < CliTestCase
       assert_match(/2026-09-10T12:00:00Z\s+abc1234\s+100\.0s\s+140\.0s\s+55\.2s\s+1 \(1 warn\)/, output)
       assert_operator output.index("2026-09-10T12:00:00Z"), :<, output.index("2026-09-11T12:00:00Z")
     end
+  end
+
+  test "--last with a number that is not a count says so instead of crashing" do
+    save "2026-09-10T12-00-00Z-default-deploy.json"
+
+    assert_match "--last takes a positive number of reports, got -1", run_command("--last", "-1")
+    assert_match "--last takes a positive number of reports, got 0", run_command("--last", "0")
   end
 
   test "--last takes at most the number asked for" do

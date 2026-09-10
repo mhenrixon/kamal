@@ -110,6 +110,9 @@ class Views::Docs::Pages::Hooks < DocsUI::Page
         | `DASH_ADVICE_WARNINGS` | how many of those were warnings rather than notes |
         | `DASH_REPORT_PATH` | the JSON report this deploy saved, when `report: history:` is not `0` |
 
+        Under `dash setup` the hook fires from the `deploy` it wraps, before the
+        outer report is finalised, so `DASH_REPORT_PATH` is absent from that run.
+
         Hooks marked **Secrets** in the table also receive every entry of
         `.dash/secrets` as environment variables, so a `pre-deploy` hook can
         talk to the same services the deploy does.

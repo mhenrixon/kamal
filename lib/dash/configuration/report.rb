@@ -17,6 +17,7 @@ class Dash::Configuration::Report
     @report_config = config.raw_config.report || {}
     validate! @report_config unless @report_config.empty?
     ensure_valid_hadolint_setting
+    ensure_valid_history
   end
 
   def advice?
@@ -52,5 +53,13 @@ class Dash::Configuration::Report
       return if HADOLINT_SETTINGS.include?(hadolint)
 
       raise Dash::ConfigurationError, "report/hadolint: must be auto or false, got #{hadolint.inspect}"
+    end
+
+    # Same reasoning: a negative count is a typo, and reading it as "keep none" would
+    # quietly stop saving the reports the operator was configuring.
+    def ensure_valid_history
+      return if history >= 0
+
+      raise Dash::ConfigurationError, "report/history: must be 0 or more, got #{report_config["history"].inspect}"
     end
 end
