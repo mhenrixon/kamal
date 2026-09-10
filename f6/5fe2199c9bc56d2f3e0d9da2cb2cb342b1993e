@@ -1,0 +1,21 @@
+lib/dash/report/writer.rb
+  s_8696d9393d8ccc::t_78ca2f4937d5da 91-94,100
+test/report/writer_test.rb
+  s_8696d9393d8ccc::t_e43b0721aeb081 194-235
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f65fe2199c9bc56d2f3e0d9da2cb2cb342b1993e",
+  "prompts": {},
+  "sessions": {
+    "s_8696d9393d8ccc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "177fc509-e78f-42f6-a630-0695243799e6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
