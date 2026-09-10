@@ -66,6 +66,33 @@ class ReportHistoryTest < ActiveSupport::TestCase
     end
   end
 
+  test "a document whose fields are the right shape but the wrong type is skipped too" do
+    in_history do |directory|
+      FileUtils.mkdir_p directory
+      write directory, "seconds-not-a-number.json", schema: 1, destination: nil, phases: [ { name: "Boot", seconds: {} } ]
+      write directory, "step-seconds-not-a-number.json", schema: 1, destination: nil, phases: [],
+        build: { steps: [ { number: 1, kind: "instruction", ordinal: 1, seconds: {} } ] }
+      write directory, "severity-not-a-string.json", schema: 1, destination: nil, phases: [], advice: [ { severity: {} } ]
+      write directory, "runtime-not-a-number.json", schema: 1, destination: nil, phases: [], runtime: {}
+      save directory, "2026-09-10T12-00-00Z-default-deploy.json"
+
+      assert_equal 1, history(directory).recent(5).size
+    end
+  end
+
+  # Two runs in the same second get `X.json` and `X-2.json`; byte for byte the first
+  # sorts last, which would make the older run "newest".
+  test "a collision suffix orders after the name it collided with" do
+    in_history do |directory|
+      save directory, "2026-09-10T12-00-00Z-default-deploy.json", runtime: 1.0
+      save directory, "2026-09-10T12-00-00Z-default-deploy-2.json", runtime: 2.0
+      save directory, "2026-09-10T12-00-00Z-default-deploy-10.json", runtime: 10.0
+      save directory, "2026-09-09T12-00-00Z-default-deploy.json", runtime: 0.5
+
+      assert_equal [ 10.0, 2.0, 1.0, 0.5 ], history(directory).recent(5).map { |document| document[:runtime] }
+    end
+  end
+
   test "a document with no phases at all is still a document" do
     in_history do |directory|
       FileUtils.mkdir_p directory

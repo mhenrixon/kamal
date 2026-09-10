@@ -29,44 +29,48 @@ class Dash::Report::Writer
     return if keep.zero?
 
     prepare_directory
-    write_atomically JSON.pretty_generate(report.to_h(**run))
+    @path = publish JSON.pretty_generate(report.to_h(**run))
     Dash::Report::History.new(directory, destination: run[:destination]).prune(keep)
 
-    path
+    @path
   end
 
   private
-    # started_at is recorded to the second, and `safe` maps `eu/west` and `eu-west` onto
-    # the same component — so the obvious name is not guaranteed to be free. Take the next
-    # one rather than write over a run that already happened.
-    def path
-      @path ||= free_path
+    # Written under a private temporary name, then linked into place under the first free
+    # public one. The link is the check and the claim in one step: it never replaces, so
+    # two runs racing for the same name — started_at is recorded to the second, and
+    # `safe` maps `eu/west` and `eu-west` onto the same string — cannot write over each
+    # other, and a deploy interrupted mid-write leaves a stray temporary file rather than
+    # a truncated report that nothing would ever prune.
+    def publish(content)
+      scratch = File.join(directory, ".#{base_name}.#{Process.pid}.tmp")
+      File.write(scratch, content)
+
+      claim(scratch)
+    ensure
+      File.delete(scratch) if scratch && File.exist?(scratch)
     end
 
-    def free_path
-      candidate = File.join(directory, "#{base_name}.json")
+    def claim(scratch)
       suffix = 1
+      candidate = File.join(directory, "#{base_name}.json")
 
-      candidate = File.join(directory, "#{base_name}-#{suffix += 1}.json") while File.exist?(candidate)
+      begin
+        File.link(scratch, candidate)
+      rescue Errno::EEXIST
+        candidate = File.join(directory, "#{base_name}-#{suffix += 1}.json")
+        retry
+      rescue SystemCallError
+        # A filesystem without hard links (some network mounts). Rename is not
+        # no-replace, but it is still atomic, and a report beats no report.
+        File.rename(scratch, candidate)
+      end
 
       candidate
     end
 
     def base_name
       "#{timestamp}-#{safe(destination)}-#{safe(run[:command])}"
-    end
-
-    # Written under a temporary name and moved into place, so a deploy interrupted
-    # mid-write leaves nothing behind. A truncated report would be skipped by every
-    # reader — including the prune, which only counts the files it could read — and would
-    # sit in the directory forever.
-    def write_atomically(content)
-      scratch = "#{path}.tmp"
-
-      File.write(scratch, content)
-      File.rename(scratch, path)
-    ensure
-      File.delete(scratch) if scratch && File.exist?(scratch)
     end
 
     # The started_at the report already carries, with the colons a filename cannot have.

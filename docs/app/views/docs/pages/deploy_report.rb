@@ -305,9 +305,12 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
           the outer report is finalised. `DASH_REPORT_PATH` and the trend findings
           are therefore absent from that one hook run — the report itself is
           written as usual, a moment later.
-        - `status` in the saved report describes the deploy's own phases. A
-          `post-deploy` hook that fails will fail the command, but the deploy
-          before it succeeded, and the report says so.
+        - `status` in the saved report covers whatever ran inside the frame that
+          finalised it. A `post-deploy` hook fires after a standalone deploy has
+          written its report, so a hook failure fails the command but the report
+          says `succeeded` — the deploy did. Under `dash setup` the hook fires
+          inside the outer frame, so there the same failure marks the deferred
+          report `failed`.
       MD
     end
   end

@@ -122,6 +122,46 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
+  # Checking for a free name and then taking it is two steps, and another deploy can
+  # land between them. The name is claimed with a no-replace operation, so a run that
+  # loses the race takes the next name rather than the other run's report.
+  test "a name taken between the check and the write is not written over" do
+    in_reports_directory do |directory|
+      FileUtils.mkdir_p directory
+      File.write File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"), "theirs"
+      File.write File.join(directory, "2026-09-10T12-00-00Z-default-deploy-2.json"), "also theirs"
+      File.stubs(:exist?).returns(false)
+
+      path = write(directory: directory)
+
+      assert_equal "2026-09-10T12-00-00Z-default-deploy-3.json", File.basename(path)
+      assert_equal "theirs", File.read(File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"))
+    ensure
+      File.unstub(:exist?)
+    end
+  end
+
+  test "no temporary file survives a write" do
+    in_reports_directory do |directory|
+      write(directory: directory)
+      write(directory: directory)
+
+      assert_empty Dir.children(directory).grep(/tmp/)
+    end
+  end
+
+  # The unsuffixed name sorts after its `-2` sibling byte for byte, so a prune that
+  # trusted the filename would keep the older run and delete the one just written.
+  test "the prune keeps the run that collided its way to a suffix, not the one it collided with" do
+    in_reports_directory do |directory|
+      first = write(directory: directory, history: 1)
+      second = write(directory: directory, history: 1)
+
+      assert_not File.exist?(first)
+      assert File.exist?(second)
+    end
+  end
+
   test "the phases, build and advice of the run all land in the document" do
     in_reports_directory do |directory|
       @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }

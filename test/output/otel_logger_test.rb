@@ -96,10 +96,21 @@ class OutputOtelLoggerTest < ActiveSupport::TestCase
 
     events = capture_events { @logger.finish("modify.kamal", "id", command: "deploy", report: report) }
 
-    assert_equal 12.0, events.fetch("dash.build").sole[:"dash.build.export_seconds"]
-    assert_equal 1, events.fetch("dash.build").sole[:"dash.build.total_steps"]
-    assert_equal [ "RUN bundle install" ], events.fetch("dash.build.step").map { |a| a[:"dash.build.instruction"] }
-    assert_equal "deploy myapp", events.fetch("dash.build.step").sole[:"deployment.name"]
+    build = events.fetch("dash.build").sole
+    assert_equal 0, build[:"dash.build.cached_steps"]
+    assert_equal 1, build[:"dash.build.total_steps"]
+    assert_equal 12.0, build[:"dash.build.export_seconds"]
+    assert_equal 0.0, build[:"dash.build.cache_export_seconds"]
+    assert_equal 0.0, build[:"dash.build.push_seconds"]
+    assert_equal "deploy myapp", build[:"deployment.name"]
+
+    step = events.fetch("dash.build.step").sole
+    assert_equal "build", step[:"dash.build.stage"]
+    assert_equal 1, step[:"dash.build.ordinal"]
+    assert_equal "RUN bundle install", step[:"dash.build.instruction"]
+    assert_equal 84.1, step[:"dash.build.seconds"]
+    assert_equal false, step[:"dash.build.cached"]
+    assert_equal "deploy myapp", step[:"deployment.name"]
   end
 
   test "each piece of advice is shipped so a backend can chart what dash keeps saying" do

@@ -40,9 +40,20 @@ class Dash::Report::History
 
     # Sorted by filename rather than by the timestamp inside, because the name is what an
     # operator sorts by too — and a report whose body we could not read is not one we can
-    # order by its contents.
+    # order by its contents. Newest first.
     def entries
-      @entries ||= Dir.glob(File.join(directory, "*.json")).sort.reverse.filter_map { |path| entry_for(path) }
+      @entries ||= Dir.glob(File.join(directory, "*.json")).sort_by { |path| order_key(path) }.reverse.filter_map { |path| entry_for(path) }
+    end
+
+    # Two runs in the same second are `X.json` and `X-2.json`, and byte for byte the
+    # unsuffixed one sorts last — which would make the older run the newest. The suffix
+    # is the run order; the command a name ends in is never a number, so a trailing
+    # `-N` is only ever ours.
+    def order_key(path)
+      name = File.basename(path, ".json")
+      base, suffix = name.match(/\A(.*)-(\d+)\z/)&.captures
+
+      base ? [ base, suffix.to_i ] : [ name, 1 ]
     end
 
     def entry_for(path)
@@ -57,16 +68,14 @@ class Dash::Report::History
     end
 
     # Claiming schema 1 is not the same as being one. A hand-edited file that parses but
-    # holds the wrong shapes would crash `dash report` when it came to render, which is a
-    # long way from where the mistake was made — so it is rejected here, with the
-    # unreadable ones, rather than trusted as far as the renderer.
+    # holds the wrong types would crash `dash report` when it came to render, a long way
+    # from where the mistake was made. Rather than mirror the whole schema here, the test
+    # is the one that matters: render it. Anything that cannot be is skipped with the
+    # unreadable files, and the raise lands in #entry_for's rescue.
     def well_formed?(document)
-      list_of_hashes?(document[:phases]) &&
-        (document[:advice].nil? || list_of_hashes?(document[:advice])) &&
-        (document[:build].nil? || document[:build].is_a?(Hash))
-    end
+      return false unless document[:runtime].nil? || document[:runtime].is_a?(Numeric)
 
-    def list_of_hashes?(value)
-      value.is_a?(Array) && value.all?(Hash)
+      Dash::Report.from_h(document).lines
+      true
     end
 end
