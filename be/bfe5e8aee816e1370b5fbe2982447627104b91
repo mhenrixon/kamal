@@ -1,0 +1,22 @@
+lib/dash/sshkit_with_ext.rb
+  s_96710b7e564f85::t_8af39dce602f3c 9-29
+  s_96710b7e564f85::t_3309cee2239490 100,221,293,298,377,382
+test/sshkit_timing_test.rb
+  s_96710b7e564f85::t_d0b0d76d25d0f1 8-12,87-89,93-112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "bebfe5e8aee816e1370b5fbe2982447627104b91",
+  "prompts": {},
+  "sessions": {
+    "s_96710b7e564f85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e390b984-b54c-4336-94d0-2cc8f1642a7b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
