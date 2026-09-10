@@ -81,6 +81,15 @@ class ReportTest < ActiveSupport::TestCase
     assert_equal 1, @report.lines.count { |line| line.include?("error") }
   end
 
+  test "different steps failing with the same message each get a row" do
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    first, second = instruction(1, nil), instruction(4, nil)
+    first.error = second.error = "did not complete successfully: exit code: 1"
+    @report.build = Dash::Build::Report.new(steps: [ first, second ])
+
+    assert_equal 2, @report.lines.count { |line| line.include?("error") }
+  end
+
   test "different failures on the same step still each get a row" do
     @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
     first, second = instruction(1, nil), instruction(1, nil)
