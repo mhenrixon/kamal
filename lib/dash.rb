@@ -1,5 +1,9 @@
 module Dash
   class ConfigurationError < StandardError; end
+
+  # Stamped before the first require so the Startup row in the deploy report covers what
+  # it actually costs to get here: gem load, Zeitwerk, and everything bin/dash pulls in.
+  PROCESS_STARTED_AT = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 end
 
 require "active_support"

@@ -145,6 +145,7 @@ module Dash::Cli
       def print_runtime
         started_at = Time.now
         @print_runtime_depth = @print_runtime_depth.to_i + 1
+        record_startup_timing if @print_runtime_depth == 1
         yield
         Time.now - started_at
       ensure
@@ -152,6 +153,14 @@ module Dash::Cli
         runtime = Time.now - started_at
         puts "  Finished all in #{sprintf("%.1f seconds", runtime)}"
         puts DASH.timings.lines if @print_runtime_depth.zero? && DASH.timings.any?
+      end
+
+      # Everything that happened before the first phase could be timed: requiring the gem,
+      # Zeitwerk, Thor parsing the command line, and building the config. It is the one row
+      # an operator cannot influence from deploy.yml, which is exactly why it has to be
+      # visible — a five-second startup is dash's problem, not theirs.
+      def record_startup_timing
+        DASH.timings.record "Startup (load, config)", Process.clock_gettime(Process::CLOCK_MONOTONIC) - Dash::PROCESS_STARTED_AT
       end
 
       def timed(name, depth: 0, &block)
@@ -204,6 +213,10 @@ module Dash::Cli
       # in one `on(hosts)` sweep would leave the locks we did win in place, and
       # every retry would then collide with itself and wait out the timeout.
       def acquire_server_lock
+        timed("Acquire server lock") { acquire_server_lock_now }
+      end
+
+      def acquire_server_lock_now
         ensure_run_directory
 
         timeout = DASH.lock_wait_timeout
@@ -343,6 +356,10 @@ module Dash::Cli
       end
 
       def acquire_lock
+        timed("Acquire deploy lock") { acquire_lock_now }
+      end
+
+      def acquire_lock_now
         ensure_run_directory
 
         if DASH.lock_wait

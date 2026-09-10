@@ -64,6 +64,27 @@ class SSHKit::Backend::Abstract
     end
   end
   prepend CommandEnvMerge
+
+  # Attributes the wall time of every command to the timing entry that is current on
+  # this thread, so a phase can report how much of its total was spent waiting on round
+  # trips rather than on the app. Nothing is executed that would not have run anyway —
+  # this only stamps the commands dash was already issuing.
+  #
+  # `defined?(DASH)` because SSHKit is usable without the commander: tests build backends
+  # directly, and the gem must not blow up in that shape.
+  module TimedCommands
+    private
+      def create_command_and_execute(args, options)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        super
+      ensure
+        if defined?(DASH)
+          DASH.timings.attribute_command(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started, local: !!host&.local?)
+        end
+      end
+  end
+  prepend TimedCommands
 end
 
 class SSHKit::Backend::Netssh::Configuration
@@ -171,6 +192,21 @@ class SSHKit::Backend::Netssh
   end
   prepend LimitConcurrentStartsInstance
 
+  # Prepended last, so it is in front of the concurrency limiter and the DNS retries:
+  # what a phase pays for a connection includes queueing behind max_concurrent_starts.
+  # The pool only calls through on a cache miss, so this measures real connects.
+  module TimedConnects
+    private
+      def connect_ssh(...)
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        super
+      ensure
+        DASH.timings.attribute_connect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) if defined?(DASH)
+      end
+  end
+  prepend TimedConnects
+
   # A pooled session that sat idle while dash was busy elsewhere (a server-lock
   # wait, a loadbalancer reboot) gets dropped by NATs and cloud networks without
   # either end noticing: net-ssh only sends keepalives from inside its event
@@ -235,9 +271,15 @@ class SSHKit::Runner::Parallel
   # problem occurs on multiple hosts.
   module CompleteAll
     def execute
+      # A new thread starts with none of its parent's thread-locals, so the timing entry
+      # has to be handed over explicitly or every command run on a host would be
+      # attributed to no phase at all.
+      timing_entry = Dash::Timings.current_entry
+
       threads = hosts.map do |host|
         Thread.new(host) do |h|
           Thread.current.report_on_exception = false
+          Dash::Timings.current_entry = timing_entry
           backend(h, &block).run
         rescue ::StandardError => e
           e2 = SSHKit::Runner::ExecuteError.new e
@@ -315,9 +357,13 @@ module SSHKitDslRoles
   #   end
   def on_roles(roles, hosts:, parallel: true, rolling: false, &block)
     if parallel
+      # See CompleteAll#execute: thread-locals do not cross Thread.new.
+      timing_entry = Dash::Timings.current_entry
+
       threads = roles.filter_map do |role|
         if (role_hosts = role.hosts & hosts).any?
           Thread.new do
+            Dash::Timings.current_entry = timing_entry
             on(role_hosts, rolling ? role.boot_runner_options(role_hosts) : {}) { |host| instance_exec(host, role, &block) }
           rescue StandardError => e
             raise SSHKit::Runner::ExecuteError.new(e), "Exception while executing on #{role}: #{e.message}"

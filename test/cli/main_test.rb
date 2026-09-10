@@ -39,7 +39,7 @@ class CliMainTest < CliTestCase
       # setup nests deploy's print_runtime inside its own; each reports a total, only the outer prints the table
       assert_equal 2, output.scan("Finished all in").size
       assert_equal 1, output.scan(/^  Prune\s+\d+\.\ds$/).size
-      assert_match /Finished all in \d+\.\d seconds\n  Ensure Docker is installed\s+\d+\.\ds\n  Pull app image\s+\d+\.\ds\n  Ensure dash-proxy\s+\d+\.\ds\n  Boot accessories\s+\d+\.\ds\n  Detect stale containers\s+\d+\.\ds\n  Boot\s+\d+\.\ds\n  Prune\s+\d+\.\ds/, output
+      assert_match /Finished all in \d+\.\d seconds\n  Startup \(load, config\)\s+\d+\.\ds\n  Acquire deploy lock\s+\d+\.\ds\s+\d+ ssh\s+\d+\.\ds\n  Ensure Docker is installed\s+\d+\.\ds\n  Validate config and secrets\s+\d+\.\ds\n  Pull app image\s+\d+\.\ds\n  Ensure dash-proxy\s+\d+\.\ds\n  Boot accessories\s+\d+\.\ds\n  Detect stale containers\s+\d+\.\ds\n  Boot\s+\d+\.\ds\n  Prune\s+\d+\.\ds/, output
     end
   end
 
@@ -129,7 +129,7 @@ class CliMainTest < CliTestCase
       assert_match /Detect stale containers/, output
       assert_match /Prune old containers and images/, output
       assert_match /Releasing the deploy lock/, output
-      assert_match /Finished all in \d+\.\d seconds\n  Pull app image\s+\d+\.\ds\n  Ensure dash-proxy\s+\d+\.\ds\n  Detect stale containers\s+\d+\.\ds\n  Boot\s+\d+\.\ds\n  Prune\s+\d+\.\ds/, output
+      assert_match /Finished all in \d+\.\d seconds\n  Startup \(load, config\)\s+\d+\.\ds\n  Validate config and secrets\s+\d+\.\ds\n  Pull app image\s+\d+\.\ds\n  Acquire deploy lock\s+\d+\.\ds\s+\d+ ssh\s+\d+\.\ds\n  Ensure dash-proxy\s+\d+\.\ds\n  Detect stale containers\s+\d+\.\ds\n  Boot\s+\d+\.\ds\n  Prune\s+\d+\.\ds/, output
     end
   end
 
@@ -1066,7 +1066,40 @@ class CliMainTest < CliTestCase
     end
   end
 
+  # The deploy report is only worth having if it is free. Every command a deploy issues is
+  # pinned here, so a measurement that quietly costs an extra SSH round trip cannot land
+  # unnoticed — and a deliberate reduction has to be explained in the same commit that
+  # edits this list.
+  #
+  # Only the commands the deploy itself issues: build, boot and prune are invoked as
+  # subcommands and are pinned by their own suites.
+  DEPLOY_COMMAND_SEQUENCE = [
+    # Dash::Cli::Base#ensure_run_directory, once per host, before the deploy lock
+    "test -d .kamal && test ! -e .dash && mv .kamal .dash || true && mkdir -p .dash",
+    "test -d .kamal && test ! -e .dash && mv .kamal .dash || true && mkdir -p .dash",
+    # Dash::Cli::Base#acquire_lock / #release_lock, on the primary host
+    "/usr/bin/env mkdir .dash/lock-app && echo \"<details>\" > .dash/lock-app/details",
+    "/usr/bin/env rm .dash/lock-app/details && rm -r .dash/lock-app"
+  ].freeze
+
+  test "deploy issues no commands beyond the pinned sequence" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    assert_equal DEPLOY_COMMAND_SEQUENCE, recorded_commands { run_command("deploy", "--skip_push") }
+  end
+
   private
+    # The lock details are a base64 blob of the operator, the time and the version, so
+    # they differ on every run and every machine. The command around them is the point.
+    def recorded_commands
+      commands = []
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
+
+      yield
+
+      commands.map { |command| command.gsub(/echo "[^"]*"/m, %(echo "<details>")) }
+    end
+
     def run_command(*command, config_file: "deploy_simple")
       with_argv([ *command, "-c", "test/fixtures/#{config_file}.yml" ]) do
         stdouted { Dash::Cli::Main.start }

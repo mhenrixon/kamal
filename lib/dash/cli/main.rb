@@ -26,7 +26,7 @@ class Dash::Cli::Main < Dash::Cli::Base
         print_config_banner
 
         say "Validate configuration and secrets...", :magenta
-        DASH.config.validate_secrets!(include_accessories: boot_accessories)
+        timed("Validate config and secrets") { DASH.config.validate_secrets!(include_accessories: boot_accessories) }
 
         if options[:skip_push]
           say "Pull app image...", :magenta
@@ -74,7 +74,7 @@ class Dash::Cli::Main < Dash::Cli::Base
         print_config_banner
 
         say "Validate configuration and secrets...", :magenta
-        DASH.config.validate_secrets!
+        timed("Validate config and secrets") { DASH.config.validate_secrets! }
 
         if options[:skip_push]
           say "Pull app image...", :magenta

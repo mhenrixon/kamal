@@ -10,7 +10,9 @@ class CliAppTest < CliTestCase
     end
 
     # Printed by deploy's print_runtime, not by app boot itself — assert the entry it records.
-    assert_match(/\A    web 1\.1\.1\.1\s+\d+\.\ds \(healthy after \d+\.\ds\)\z/, DASH.timings.lines.sole)
+    # `app boot` takes the deploy lock, which records a phase of its own, so this is not the only line.
+    assert DASH.timings.lines.any? { |line| line.match?(/\A    web 1\.1\.1\.1\s+\d+\.\ds\s+\d+ ssh\s+\d+\.\ds \(healthy after \d+\.\ds\)\z/) },
+      DASH.timings.lines.inspect
   end
 
   test "boot will rename if same version is already running" do
