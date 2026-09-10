@@ -1,0 +1,19 @@
+test/report_test.rb
+  s_2603bd321e1b37::t_5343e4311213b8 84-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1dcceceb8d7df4c444630e6e377e82260ad16ac2",
+  "prompts": {},
+  "sessions": {
+    "s_2603bd321e1b37": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9c71c9f9-0a28-4753-997c-0d7b587f4f8c",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
