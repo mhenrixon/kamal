@@ -29,6 +29,12 @@ class DockerfileHadolintTest < ActiveSupport::TestCase
     assert_match "hadolint output could not be parsed", findings.first.message
   end
 
+  test "valid JSON that is not a list is reported as unparsable, not as a failure to run" do
+    stub_hadolint "{}"
+
+    assert_match "hadolint output could not be parsed (expected a JSON array, got hash)", findings.first.message
+  end
+
   test "blank output means no findings" do
     stub_hadolint ""
 

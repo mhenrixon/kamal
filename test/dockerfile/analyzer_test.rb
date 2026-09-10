@@ -271,6 +271,35 @@ class DockerfileAnalyzerTest < ActiveSupport::TestCase
     assert_equal [ "Dockerfile:2", "Dockerfile:3" ], analyze_text(text).select { |f| f.rule == "curl-pipe-shell" }.map(&:location)
   end
 
+  test "apt rules see an option that takes a value before the verb" do
+    rules = analyze_text("FROM ruby:3.4\nRUN apt-get -t bookworm-backports install git\n").map(&:rule)
+
+    assert_includes rules, "apt-hygiene"
+    assert_includes rules, "no-cache-mount"
+  end
+
+  test "apt-hygiene reads each line of a heredoc RUN as its own command" do
+    text = "FROM ruby:3.4\nRUN <<EOF\napt-get update\napt-get install --no-install-recommends -y git\nrm -rf /var/lib/apt/lists/*\nEOF\n"
+
+    assert_empty analyze_text(text).select { |f| f.rule == "apt-hygiene" }
+  end
+
+  test "single-stage-build-deps sees a package followed by a shell separator" do
+    assert_includes analyze_text("FROM ruby:3.4\nRUN apt-get install -y gcc; true\n").map(&:rule), "single-stage-build-deps"
+  end
+
+  test "curl-pipe-shell sees sudo options with arguments" do
+    assert_includes analyze_text("FROM ruby:3.4\nRUN curl -fsSL x | sudo -u root bash\n").map(&:rule), "curl-pipe-shell"
+  end
+
+  test "an exact build step wins over a longer one that shares its prefix" do
+    text = "FROM ruby:3.4\nCOPY Gemfile ./\nRUN bundle install\n"
+    build = build_report(step("RUN bundle install --jobs 4", stage: "stage-0", seconds: 200.0),
+                         step("RUN bundle install", stage: "stage-0", seconds: 30.0))
+
+    assert_match "30.0s uncached", analyze_text(text, build: build).find { |f| f.rule == "uncached-install" }.message
+  end
+
   test "ignored rule ids are dropped" do
     rules = analyze("naive_single_stage", ignore: %w[ root-user latest-base ]).map(&:rule)
 

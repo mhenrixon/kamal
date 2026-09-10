@@ -38,10 +38,14 @@ class Dash::Dockerfile::Hadolint
     return unavailable("exited #{status.exitstatus}") unless status.success?
     return [] if output.strip.empty?
 
-    JSON.parse(output).map { |issue| finding_for(issue) }
-  rescue JSON::ParserError, TypeError, NoMethodError => e
-    # It ran; what it printed is what dash could not read. Different problem, different line.
-    note("hadolint output could not be parsed (#{e.message.truncate(80)})")
+    issues = JSON.parse(output)
+    return unparsable("expected a JSON array, got #{issues.class.name.downcase}") unless issues.is_a?(Array)
+
+    issues.map { |issue| finding_for(issue) }
+  # Only JSON.parse raises this, so it is the one error that means "it ran fine, dash
+  # could not read what it printed". Anything else that raises in here is dash's own.
+  rescue JSON::ParserError => e
+    unparsable(e.message.truncate(80))
   rescue StandardError => e
     unavailable(e.message)
   end
@@ -54,6 +58,10 @@ class Dash::Dockerfile::Hadolint
         location: "#{@path}:#{issue["line"]}",
         message: "#{issue["code"]}: #{issue["message"]}",
         suggestion: nil
+    end
+
+    def unparsable(reason)
+      note "hadolint output could not be parsed (#{reason})"
     end
 
     def unavailable(reason)

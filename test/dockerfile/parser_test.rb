@@ -161,6 +161,15 @@ class DockerfileParserTest < ActiveSupport::TestCase
     assert_equal "echo still parsed", document.instructions[2].args
   end
 
+  test "a missing later delimiter leaves the earlier heredoc unconsumed too" do
+    document = parse("FROM alpine:3.20\nCOPY <<A <<B /etc/\nfirst\nA\nsecond\nRUN echo parsed\n")
+
+    # Nothing is consumed, so the would-be body lines parse as (nonsense) instructions of
+    # their own — the point is that the RUN after them is still there to be analysed.
+    assert_equal "<<A <<B /etc/", document.instructions[1].args
+    assert_equal "echo parsed", document.instructions.last.args
+  end
+
   test "only an explicit AS name can be inherited from" do
     document = parse("FROM alpine:3.20\nFROM stage-0\n")
 

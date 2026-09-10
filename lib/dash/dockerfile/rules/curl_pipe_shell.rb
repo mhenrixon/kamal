@@ -1,7 +1,8 @@
 # Piping a download straight into a shell runs whatever the server sends today, and there
 # is no version in the Dockerfile to say what that was.
 class Dash::Dockerfile::Rules::CurlPipeShell < Dash::Dockerfile::Rules::Base
-  SHELL = /(?:sudo\s+(?:-\S+\s+)*)?(?:ba|z|k)?sh\b/
+  # `sudo` may carry flags with or without arguments (`-E`, `-u root`) before the shell.
+  SHELL = /(?:sudo\s+(?:-\S+(?:\s+[^-\s]\S*)?\s+)*)?(?:ba|z|k)?sh\b/
   PIPE_TO_SHELL = /\b(?:curl|wget)\b[^|]*\|\s*#{SHELL.source}|#{SHELL.source}\s+<\(\s*(?:curl|wget)\b/
   SUGGESTION = "download to a file, verify a checksum, then run it — and pin the version"
 

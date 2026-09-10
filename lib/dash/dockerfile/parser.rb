@@ -109,16 +109,19 @@ class Dash::Dockerfile::Parser
       return [ text, index ] if delimiters.empty?
 
       body = []
+      at = index
 
       delimiters.each do |delimiter|
-        terminator = (index...lines.size).find { |at| lines[at].strip == delimiter }
+        terminator = (at...lines.size).find { |line| lines[line].strip == delimiter }
         return [ text, index ] unless terminator
 
-        body.concat lines[index...terminator].map(&:strip)
-        index = terminator + 1
+        body.concat lines[at...terminator].map(&:strip)
+        at = terminator + 1
       end
 
-      [ [ text, *body ].join(" "), index ]
+      # Line breaks are kept: in a RUN heredoc each line is its own shell command, and the
+      # apt rules need to know where one ends.
+      [ [ text, *body ].join("\n"), at ]
     end
 
     def build_instruction(text, line)

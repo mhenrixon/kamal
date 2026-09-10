@@ -3,10 +3,11 @@
 class Dash::Dockerfile::Rules::AptHygiene < Dash::Dockerfile::Rules::Base
   NO_RECOMMENDS = /--no-install-recommends/
   LIST_CLEANUP = %r{rm\s+-rf\s+/var/lib/apt/lists}
-  APT_OPERATION = /\bapt-get\s+(?:-\S+\s+)*(?:update|install|upgrade)\b/
+  APT_OPERATION = /\bapt-get\s+#{Dash::Dockerfile::Context::APT_OPTIONS.source}(?:update|install|upgrade)\b/
   # One shell command at a time: a later, compliant install must not vouch for an
   # earlier one, and a cleanup only counts after the last thing that refilled the lists.
-  SEGMENT = /&&|\|\||;/
+  # A heredoc body keeps its line breaks, so each of its lines is a command too.
+  SEGMENT = /&&|\|\||;|\n/
   SUGGESTION = "add --no-install-recommends to every install and rm -rf /var/lib/apt/lists/* at the end of the same RUN"
 
   def findings

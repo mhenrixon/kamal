@@ -23,8 +23,10 @@ class Dash::Dockerfile::Context
     [ /\bdotnet\s+restore\b/, "/root/.nuget/packages" ]
   ].freeze
 
-  # apt takes its options before or after the verb (`apt-get -y install`).
-  APT_INSTALL = [ /\bapt-get\s+(?:-\S+\s+)*install\b/, "/var/cache/apt" ].freeze
+  # apt takes its options before or after the verb (`apt-get -y install`,
+  # `apt-get -t bookworm-backports install`), so the verb is found past any of them.
+  APT_OPTIONS = /(?:-\S+(?:\s+[^-\s]\S*)?\s+)*/
+  APT_INSTALL = [ /\bapt-get\s+#{APT_OPTIONS.source}install\b/, "/var/cache/apt" ].freeze
 
   # A copy that ships the whole tree, so every commit invalidates it and everything
   # layered on top of it.
@@ -94,7 +96,10 @@ class Dash::Dockerfile::Context
     text = normalize(instruction.to_s)
     candidates = build.instruction_steps.select { |step| same_stage?(step, instruction) }
 
-    best = candidates.max_by { |step| [ shared_prefix(text, normalize(step.instruction)), step.seconds.to_f ] }
+    best = candidates.max_by do |step|
+      matched = normalize(step.instruction)
+      [ matched == text ? 1 : 0, shared_prefix(text, matched), step.seconds.to_f ]
+    end
     return unless best
 
     matched = normalize(best.instruction)
