@@ -1,0 +1,41 @@
+docs/app/views/docs/pages/hooks.rb
+  s_8696d9393d8ccc::t_4763c16352e8a9 113-115
+test/configuration/report_test.rb
+  s_8696d9393d8ccc::t_bdc8391ee4599a 39-46
+test/report/history_test.rb
+  s_8696d9393d8ccc::t_85ef721d798369 54-77,118-119
+lib/dash/configuration/report.rb
+  s_8696d9393d8ccc::t_290168c9db00b0 20,57-63
+lib/dash/report/writer.rb
+  s_8696d9393d8ccc::t_3472431e5a747c 32,39-41,53-69
+  s_8696d9393d8ccc::t_90ab40f6824e2e 43-52
+test/output/otel_logger_test.rb
+  s_8696d9393d8ccc::t_5167b3a3c76952 88-90,172,185-188
+  s_8696d9393d8ccc::t_a1fb4e4068a5ad 91-93,97-102,153-166
+test/report/writer_test.rb
+  s_8696d9393d8ccc::t_c9bdf2adf6c4ea 94-124
+docs/app/views/docs/pages/deploy_report.rb
+  s_8696d9393d8ccc::t_4be8a3c2af66ce 161-163,204,213-216,220,258,301-310
+lib/dash/report/history.rb
+  s_8696d9393d8ccc::t_8af96e336de287 52,58-70
+lib/dash/cli/report.rb
+  s_8696d9393d8ccc::t_e0e6e7b91cadf3 17-20,32-37
+test/cli/report_test.rb
+  s_8696d9393d8ccc::t_436b2b9af6dfbc 35,59-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "af0ab8ff5800a894443e0c096eeed50c2824bebb",
+  "prompts": {},
+  "sessions": {
+    "s_8696d9393d8ccc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "177fc509-e78f-42f6-a630-0695243799e6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
