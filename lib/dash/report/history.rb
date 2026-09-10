@@ -68,14 +68,27 @@ class Dash::Report::History
     end
 
     # Claiming schema 1 is not the same as being one. A hand-edited file that parses but
-    # holds the wrong types would crash `dash report` when it came to render, a long way
-    # from where the mistake was made. Rather than mirror the whole schema here, the test
-    # is the one that matters: render it. Anything that cannot be is skipped with the
-    # unreadable files, and the raise lands in #entry_for's rescue.
+    # holds the wrong shapes would crash `dash report` somewhere far from the mistake, or
+    # — worse — render as an empty table. The top-level fields the writer always sets are
+    # checked by shape; then the test that matters for everything nested: render it.
+    # Anything that cannot be is skipped with the unreadable files, the raise landing in
+    # #entry_for's rescue.
     def well_formed?(document)
-      return false unless document[:runtime].nil? || document[:runtime].is_a?(Numeric)
+      return false unless list_of_hashes?(document[:phases])
+      return false unless optional?(document[:advice]) { |advice| list_of_hashes?(advice) }
+      return false unless optional?(document[:build]) { |build| build.is_a?(Hash) }
+      return false unless optional?(document[:error]) { |error| error.is_a?(Hash) }
+      return false unless optional?(document[:runtime]) { |runtime| runtime.is_a?(Numeric) }
 
       Dash::Report.from_h(document).lines
       true
+    end
+
+    def optional?(value)
+      value.nil? || yield(value)
+    end
+
+    def list_of_hashes?(value)
+      value.is_a?(Array) && value.all?(Hash)
     end
 end

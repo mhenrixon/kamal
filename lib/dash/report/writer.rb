@@ -36,37 +36,45 @@ class Dash::Report::Writer
   end
 
   private
-    # Written under a private temporary name, then linked into place under the first free
-    # public one. The link is the check and the claim in one step: it never replaces, so
-    # two runs racing for the same name — started_at is recorded to the second, and
-    # `safe` maps `eu/west` and `eu-west` onto the same string — cannot write over each
-    # other, and a deploy interrupted mid-write leaves a stray temporary file rather than
-    # a truncated report that nothing would ever prune.
+    # Written under a private temporary name, then moved onto a name claimed with an
+    # exclusive create. The create is the check and the claim in one step and never
+    # replaces — two runs racing for the same name (started_at is recorded to the second,
+    # and `safe` maps `eu/west` and `eu-west` onto the same string) each end up with their
+    # own file — and it needs nothing a filesystem might lack, unlike a hard link. The
+    # rename that follows is onto a placeholder only this run holds, so it is atomic and
+    # a deploy interrupted mid-write leaves a stray temporary file rather than a
+    # truncated report that nothing would ever prune.
     def publish(content)
       scratch = File.join(directory, ".#{base_name}.#{Process.pid}.tmp")
       File.write(scratch, content)
 
-      claim(scratch)
+      fill claim, scratch
     ensure
       File.delete(scratch) if scratch && File.exist?(scratch)
     end
 
-    def claim(scratch)
+    def claim
       suffix = 1
       candidate = File.join(directory, "#{base_name}.json")
 
       begin
-        File.link(scratch, candidate)
+        File.open(candidate, File::WRONLY | File::CREAT | File::EXCL) { }
       rescue Errno::EEXIST
         candidate = File.join(directory, "#{base_name}-#{suffix += 1}.json")
         retry
-      rescue SystemCallError
-        # A filesystem without hard links (some network mounts). Rename is not
-        # no-replace, but it is still atomic, and a report beats no report.
-        File.rename(scratch, candidate)
       end
 
       candidate
+    end
+
+    # A placeholder that could not be filled must not survive as an empty report: no
+    # reader could parse it, so nothing would ever prune it.
+    def fill(candidate, scratch)
+      File.rename(scratch, candidate)
+      candidate
+    rescue SystemCallError
+      File.delete(candidate) if File.exist?(candidate)
+      raise
     end
 
     def base_name

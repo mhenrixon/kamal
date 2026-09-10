@@ -66,6 +66,21 @@ class ReportHistoryTest < ActiveSupport::TestCase
     end
   end
 
+  # Fields the writer always sets, in shapes it never writes. `Array(nil)` would render
+  # a missing phases list as an empty table, `build: false` would simply be ignored, and
+  # `error: "boom"` reaches nothing until `dash report` tries to dig into it.
+  test "a document missing a field the writer always sets is skipped" do
+    in_history do |directory|
+      FileUtils.mkdir_p directory
+      write directory, "phases-nil.json", schema: 1, destination: nil, phases: nil
+      write directory, "build-false.json", schema: 1, destination: nil, phases: [], build: false
+      write directory, "error-a-string.json", schema: 1, destination: nil, phases: [], error: "boom"
+      save directory, "2026-09-10T12-00-00Z-default-deploy.json"
+
+      assert_equal 1, history(directory).recent(5).size
+    end
+  end
+
   test "a document whose fields are the right shape but the wrong type is skipped too" do
     in_history do |directory|
       FileUtils.mkdir_p directory

@@ -122,22 +122,31 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
-  # Checking for a free name and then taking it is two steps, and another deploy can
-  # land between them. The name is claimed with a no-replace operation, so a run that
-  # loses the race takes the next name rather than the other run's report.
-  test "a name taken between the check and the write is not written over" do
+  # There is no "check, then take": the name is claimed with an exclusive create, so a
+  # run that loses a race takes the next name rather than the other run's report — and
+  # a file another process dropped in is never written over, whatever it holds.
+  test "a name that is already taken is never written over" do
     in_reports_directory do |directory|
       FileUtils.mkdir_p directory
       File.write File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"), "theirs"
       File.write File.join(directory, "2026-09-10T12-00-00Z-default-deploy-2.json"), "also theirs"
-      File.stubs(:exist?).returns(false)
 
       path = write(directory: directory)
 
       assert_equal "2026-09-10T12-00-00Z-default-deploy-3.json", File.basename(path)
       assert_equal "theirs", File.read(File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"))
+      assert_equal "also theirs", File.read(File.join(directory, "2026-09-10T12-00-00Z-default-deploy-2.json"))
+    end
+  end
+
+  test "a claim that cannot be filled is released rather than left as an empty report" do
+    in_reports_directory do |directory|
+      File.stubs(:rename).raises(Errno::EACCES, "reports")
+
+      assert_raises(Errno::EACCES) { write(directory: directory) }
+      assert_empty Dir.children(directory).grep(/\.json\z/)
     ensure
-      File.unstub(:exist?)
+      File.unstub(:rename)
     end
   end
 
