@@ -35,6 +35,7 @@ class Doc
   page "Worker roles",   group: "Deploying", slug: "worker-roles", view: "WorkerRoles"
   page "Hooks",          group: "Deploying"
   page "Canary rollout", group: "Deploying", slug: "rollout", view: "CanaryRollout"
+  page "Reading the deploy report", group: "Deploying", slug: "deploy-report", view: "DeployReport"
 
   # Proxy — the dash-only features upstream kamal does not have
   page "Load balancing",           group: "Proxy", slug: "load-balancing", view: "LoadBalancing"
@@ -58,6 +59,7 @@ class Doc
   page "SSHKit",           group: "Configuration", slug: "sshkit", view: "Config::Sshkit"
   page "Logging",          group: "Configuration", slug: "logging", view: "Config::Logging"
   page "Output",           group: "Configuration", slug: "output", view: "Config::Output"
+  page "Deploy report",    group: "Configuration", slug: "report", view: "Config::Report"
 
   # Reference
   page "Commands", group: "Reference"

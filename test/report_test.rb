@@ -130,7 +130,102 @@ class ReportTest < ActiveSupport::TestCase
     assert_equal @report.lines, @report.build_lines
   end
 
+  test "advice prints under the table, warnings first, with the suggestion on its own line" do
+    @timings.phase("Boot") { }
+    @report.advice = [ finding(:warn, "Dockerfile:5", "COPY . . busts the install", "copy manifests first"),
+                       finding(:info, "builder.cache", "cache export took 29.4s") ]
+
+    assert_equal [
+      "  Advice",
+      "    warn  Dockerfile:5    COPY . . busts the install",
+      "                          → copy manifests first",
+      "    info  builder.cache   cache export took 29.4s"
+    ], @report.lines.drop(1)
+  end
+
+  test "no advice means no Advice header" do
+    @timings.phase("Boot") { }
+    @report.advice = []
+
+    assert_equal @timings.lines, @report.lines
+  end
+
+  test "warnings are yellow on a terminal and plain everywhere else" do
+    @report.advice = [ finding(:warn, "Dockerfile:5", "message"), finding(:info, "Dockerfile:6", "message") ]
+
+    $stdout.stub(:tty?, true) do
+      warning, note = @report.advice_lines.drop(1)
+      assert_match "\e[33m", warning
+      assert_no_match(/\e\[/, note)
+    end
+  end
+
+  test "analyze! reads the configured Dockerfile and honours the ignore list" do
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", ignore: [ "root-user" ])
+
+    assert_includes @report.advice.map(&:rule), "copy-before-install"
+    assert_not_includes @report.advice.map(&:rule), "root-user"
+  end
+
+  test "analyze! measures against the build report when there is one" do
+    @report.build = Dash::Build::Report.new(steps: [ bundle_install_step ])
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/naive_single_stage.Dockerfile")
+
+    assert_match "(measured 84.1s uncached)", @report.advice.find { |f| f.rule == "copy-before-install" }.message
+  end
+
+  test "analyze! does nothing when advice is turned off" do
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", advice: false)
+
+    assert_empty @report.advice
+  end
+
+  test "analyze! clears earlier advice when it has nothing to say" do
+    @report.advice = [ finding(:warn, "Dockerfile:1", "stale") ]
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", advice: false)
+
+    assert_empty @report.advice
+  end
+
+  test "analyze! can be pointed at a build directory other than the configured one" do
+    Dir.mktmpdir do |dir|
+      FileUtils.cp "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", File.join(dir, "Dockerfile")
+      @report.analyze! config(dockerfile: "Dockerfile"), build_directory: dir
+
+      assert_includes @report.advice.map(&:rule), "latest-base"
+    end
+  end
+
+  test "analyze! stays quiet when there is no Dockerfile to read" do
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/nonexistent.Dockerfile")
+
+    assert_empty @report.advice
+  end
+
   private
+    def finding(severity, location, message, suggestion = nil)
+      Dash::Dockerfile::Finding.new(rule: "rule", severity: severity, location: location, message: message, suggestion: suggestion)
+    end
+
+    def bundle_install_step
+      Dash::Build::Step.new(1, kind: :instruction).tap do |step|
+        step.instruction = "RUN bundle install"
+        step.stage = "stage-0"
+        step.ordinal, step.steps_in_stage = 1, 1
+        step.seconds = 84.1
+      end
+    end
+
+    def config(dockerfile:, ignore: [], advice: true)
+      Dash::Configuration.new({
+        service: "app", image: "dhh/app",
+        registry: { "username" => "dhh", "password" => "secret" },
+        builder: { "arch" => "amd64", "dockerfile" => dockerfile, "context" => "test/fixtures/dockerfiles/context" },
+        report: { "advice" => advice, "hadolint" => false, "ignore" => ignore },
+        servers: [ "1.1.1.1" ]
+      })
+    end
+
     def build_report(cache_export: 29.4)
       steps = [
         context(25_180_000, 0.2),

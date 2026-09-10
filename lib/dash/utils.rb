@@ -134,6 +134,13 @@ module Dash::Utils
     end
   end
 
+  # buildx reports decimal units, so dash does too — an operator comparing a report row
+  # with what buildx printed should see the same number.
+  def human_bytes(bytes)
+    divisor, unit = [ [ 1_000_000_000, "GB" ], [ 1_000_000, "MB" ], [ 1_000, "kB" ] ].find { |size, _| bytes >= size }
+    divisor ? format("%.1f%s", bytes.to_f / divisor, unit) : "#{bytes}B"
+  end
+
   def older_version?(version, other_version)
     Gem::Version.new(version.delete_prefix("v")) < Gem::Version.new(other_version.delete_prefix("v"))
   end

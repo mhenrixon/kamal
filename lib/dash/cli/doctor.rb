@@ -17,7 +17,8 @@ class Dash::Cli::Doctor
     ports: "Ports",
     dns: "DNS",
     certificate: "Certificates",
-    readiness: "Readiness"
+    readiness: "Readiness",
+    dockerfile: "Dockerfile"
   }.freeze
 
   STATUS_COLORS = { ok: :green, warn: :yellow, fail: :red }.freeze

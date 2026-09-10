@@ -163,6 +163,20 @@ module Dash::Cli
         DASH.timings.record "Startup (load, config)", Process.clock_gettime(Process::CLOCK_MONOTONIC) - Dash::PROCESS_STARTED_AT
       end
 
+      # Advice about the Dockerfile, run once the build report is in so measured rules can
+      # name real seconds. Nothing here is allowed to end a deploy: a report is a courtesy
+      # printed next to the work, and the work already succeeded or failed on its own.
+      def analyze_report
+        guarded_report { DASH.report.analyze!(DASH.config) }
+      end
+
+      def guarded_report
+        yield
+      rescue StandardError => e
+        say "Deploy report unavailable: #{e.class}: #{e.message}", :yellow
+        say e.backtrace.join("\n"), :yellow if ENV["VERBOSE"]
+      end
+
       def timed(name, depth: 0, &block)
         DASH.timings.phase(name, depth: depth, &block)
       end

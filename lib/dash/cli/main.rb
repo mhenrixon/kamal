@@ -39,6 +39,10 @@ class Dash::Cli::Main < Dash::Cli::Base
           end
         end
 
+        # Before the boot, so the advice still prints when a boot fails — a slow build is
+        # exactly the kind of thing an operator wants to see on a deploy that went wrong.
+        analyze_report
+
         modify(lock: true) do
           run_hook "pre-deploy", secrets: true
 
@@ -89,6 +93,10 @@ class Dash::Cli::Main < Dash::Cli::Base
             invoke "dash:cli:build:deliver", [], invoke_options
           end
         end
+
+        # Before the boot, so the advice still prints when a boot fails — a slow build is
+        # exactly the kind of thing an operator wants to see on a deploy that went wrong.
+        analyze_report
 
         modify(lock: true) do
           run_hook "pre-deploy", secrets: true

@@ -146,6 +146,32 @@ class CliBuildTest < CliTestCase
     end
   end
 
+  # A pipeline that builds in one job and deploys in another still gets the advice, with
+  # this build's numbers folded into it.
+  test "a standalone push prints the advice under the build rows" do
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    stub_build_stream "progress_plain_success"
+
+    run_command("push", fixture: :with_report_advice).tap do |output|
+      assert_match(/^  Advice$/, output)
+      assert_match(/^    warn  \S+:5\s+COPY \. \. runs before `bundle install`/, output)
+      assert_operator output.index("    cached steps"), :<, output.index("  Advice")
+    end
+  end
+
+  # `dev` builds the working directory even when the config would clone for `push`, so
+  # the advice has to read the working directory's Dockerfile, not a clone that may not
+  # exist.
+  test "dev analyses the working directory, not the clone directory" do
+    Dash::Configuration::Builder.any_instance.stubs(:git_clone?).returns(true)
+    Dash::Configuration::Builder.any_instance.stubs(:build_directory).returns("/nonexistent/clone")
+    Dash::Configuration::Builder.any_instance.stubs(:dockerfile).returns("test/fixtures/dockerfiles/naive_single_stage.Dockerfile")
+
+    run_command("dev").tap do |output|
+      assert_match(/^  Advice$/, output)
+    end
+  end
+
   test "a build that fails still leaves the step that broke in the report" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
     stub_build_stream "progress_plain_failed", failing: true
