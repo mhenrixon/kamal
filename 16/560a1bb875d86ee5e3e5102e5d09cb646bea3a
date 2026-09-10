@@ -1,0 +1,136 @@
+lib/dash/dockerfile/hadolint.rb
+  s_73db275d72793a::t_31890095556529 1-57
+lib/dash/configuration/docs/report.yml
+  s_73db275d72793a::t_4e7cbbe1940b2b 1-38
+lib/dash/configuration.rb
+  s_73db275d72793a::t_4e7cbbe1940b2b 19,79
+lib/dash/dockerfile/analyzer.rb
+  s_73db275d72793a::t_9fbd8c0db6797a 33-36
+  s_73db275d72793a::t_33b7e967cb00c5 1-32,37,39-63
+  s_73db275d72793a::t_67d0a6baad16d4 38
+test/dockerfile/parser_test.rb
+  s_73db275d72793a::t_fd29011d3b1e3a 1-161
+docs/app/models/doc.rb
+  s_73db275d72793a::t_b61d0d91496e89 62
+  s_73db275d72793a::t_c095313b364c33 38
+lib/dash/dockerfile/rules/single_stage_build_deps.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-17
+lib/dash/cli/build.rb
+  s_73db275d72793a::t_15eb6afa6d0c98 191,193-199
+  s_73db275d72793a::t_4a24cded128020 187-189,192,200
+lib/dash/utils.rb
+  s_73db275d72793a::t_cf4e402a192108 137-143
+lib/dash/cli/doctor.rb
+  s_73db275d72793a::t_eaeb02744930c4 20-21
+lib/dash/dockerfile/rules/dockerignore_gaps.rb
+  s_73db275d72793a::t_ce8c76cb7f0870 1-36
+test/configuration/report_test.rb
+  s_73db275d72793a::t_d924321bab3c0e 1-39,41-61
+  s_73db275d72793a::t_5afccb7dae1551 40
+test/cli/build_test.rb
+  s_73db275d72793a::t_f1aaf825e67036 149-161
+lib/dash/dockerfile/rules/cache_busting_arg.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-36
+lib/dash/configuration/docs/configuration.yml
+  s_73db275d72793a::t_4e7cbbe1940b2b 232-237
+test/fixtures/dockerfiles/naive_single_stage.Dockerfile
+  s_73db275d72793a::t_d65dd4d272baba 1-19
+test/report_test.rb
+  s_73db275d72793a::t_815e0370761de0 141
+  s_73db275d72793a::t_2302ff0cfb7490 133-140,142-188,190-212
+docs/app/views/docs/pages/deploy_report.rb
+  s_73db275d72793a::t_29c8dfda7efd3c 1-169
+lib/dash/dockerfile/rules/root_user.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-11
+test/fixtures/deploy_with_report_advice.yml
+  s_73db275d72793a::t_d69de098cada9d 1-15
+lib/dash/dockerfile/rules/copy_before_install.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-34
+lib/dash/dockerfile/rules/context_size.rb
+  s_73db275d72793a::t_ce8c76cb7f0870 1-20
+lib/dash/dockerfile/parser.rb
+  s_73db275d72793a::t_2beb9befa60034 1-180
+test/dockerfile/hadolint_test.rb
+  s_73db275d72793a::t_bf6e7d50c39d98 39-43
+  s_73db275d72793a::t_62630ca74dd2c7 1-38,44-77
+test/test_helper.rb
+  s_73db275d72793a::t_2eba3dc5403149 73-76
+test/cli/doctor_test.rb
+  s_73db275d72793a::t_d69de098cada9d 12-16,354-414,416-420
+test/fixtures/dockerfiles/heredoc.Dockerfile
+  s_73db275d72793a::t_e041550af9238f 7-18
+  s_73db275d72793a::t_d65dd4d272baba 1-6
+lib/dash/dockerfile/rules/curl_pipe_shell.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-14
+lib/dash/dockerfile/dockerignore.rb
+  s_73db275d72793a::t_1bd823b18b6da9 1-29
+lib/dash/dockerfile/instruction.rb
+  s_73db275d72793a::t_6b88d9a7c27ef4 1-62
+lib/dash/report.rb
+  s_73db275d72793a::t_27192dd817eca9 93-94,96-99
+  s_73db275d72793a::t_dc0621fb6aa4ff 2
+  s_73db275d72793a::t_cf4e402a192108 12-13
+  s_73db275d72793a::t_0ec0ee4b1989c8 23-28,30,34,41-74,95,100-109
+lib/dash/cli/main.rb
+  s_73db275d72793a::t_dfd59d61adf850 42-45,97-99
+test/cli/main_test.rb
+  s_73db275d72793a::t_27192dd817eca9 1136,1139,1166-1175
+  s_73db275d72793a::t_5cf161acbd1f1f 1090-1135,1137-1138,1140-1142
+docs/app/views/docs/pages/config/report.rb
+  s_73db275d72793a::t_b61d0d91496e89 1-9
+test/fixtures/dockerfiles/rails_multistage.Dockerfile
+  s_73db275d72793a::t_d65dd4d272baba 1-37
+test/fixtures/dockerfiles/context/.dockerignore
+  s_73db275d72793a::t_6409d8488939e5 1-7
+lib/dash/dockerfile/finding.rb
+  s_73db275d72793a::t_cef4d7bcce8de4 1-14
+lib/dash/dockerfile/rules/inline_env_blob.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-10,12-23
+  s_73db275d72793a::t_f8237d1c8861fa 11
+lib/dash/dockerfile/rules/missing_dockerignore.rb
+  s_73db275d72793a::t_ce8c76cb7f0870 1-11
+lib/dash/dockerfile/document.rb
+  s_73db275d72793a::t_da1b9a542ea068 1-27
+lib/dash/dockerfile/rules/base.rb
+  s_73db275d72793a::t_e71ddd40f43bf7 1-43
+lib/dash/configuration/report.rb
+  s_73db275d72793a::t_a384e2bd175b41 1-44
+lib/dash/cli/base.rb
+  s_73db275d72793a::t_4a24cded128020 166-179
+lib/dash/cli/doctor/config_checks.rb
+  s_73db275d72793a::t_eaeb02744930c4 5,28-61
+lib/dash/dockerfile/rules/uncached_install.rb
+  s_73db275d72793a::t_ce8c76cb7f0870 1-20
+lib/dash/dockerfile/rules/no_cache_mount.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-26
+lib/dash/dockerfile/context.rb
+  s_73db275d72793a::t_d35eada75d43dc 1-129
+lib/dash/dockerfile/stage.rb
+  s_73db275d72793a::t_9efcaaf46a2af8 1-49
+lib/dash/dockerfile/rules/cache_export_cost.rb
+  s_73db275d72793a::t_ce8c76cb7f0870 1-20
+lib/dash/dockerfile/rules/secret_in_build_arg.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-26
+test/dockerfile/analyzer_test.rb
+  s_73db275d72793a::t_c4dd24862caffd 1-254
+lib/dash/dockerfile/rules/apt_hygiene.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-21
+lib/dash/dockerfile/rules/latest_base.rb
+  s_73db275d72793a::t_18ca7f56aceb6d 1-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "16560a1bb875d86ee5e3e5102e5d09cb646bea3a",
+  "prompts": {},
+  "sessions": {
+    "s_73db275d72793a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88ea5138-44f6-49f4-b5c3-477665597286",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
