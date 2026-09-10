@@ -191,6 +191,48 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
+  test "no temporary file survives a write" do
+    in_reports_directory do |directory|
+      write(directory: directory)
+      write(directory: directory)
+
+      assert_empty Dir.children(directory).grep(/tmp/)
+      assert_equal 2, Dir.children(directory).grep(/\.json\z/).size
+    end
+  end
+
+  test "no temporary file survives a write without hard links either" do
+    in_reports_directory do |directory|
+      File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
+
+      write(directory: directory)
+
+      assert_empty Dir.children(directory).grep(/tmp/)
+      assert_equal 1, Dir.children(directory).grep(/\.json\z/).size
+    ensure
+      File.unstub(:link)
+    end
+  end
+
+  # The cleanup asks the filesystem what happened rather than trusting a flag it set
+  # after the fact: an interrupt landing between the rename and that assignment would
+  # otherwise delete a report that had already been published.
+  test "a report already published is never deleted by the cleanup" do
+    in_reports_directory do |directory|
+      File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
+      renamed = File.method(:rename)
+      File.stubs(:rename).with { |from, to| renamed.call(from, to); true }.raises(Interrupt)
+
+      assert_raises(Interrupt) { write(directory: directory) }
+
+      assert_equal "deploy", document(File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"))[:command]
+      assert_empty Dir.children(directory).grep(/tmp/)
+    ensure
+      File.unstub(:link)
+      File.unstub(:rename)
+    end
+  end
+
   test "an interrupt without hard links leaves no empty report either" do
     in_reports_directory do |directory|
       File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")

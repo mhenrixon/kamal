@@ -88,14 +88,16 @@ class Dash::Report::Writer
       false
     end
 
+    # The cleanup asks the filesystem what happened rather than trusting a flag set after
+    # the fact: the rename consumes the scratch file, so a scratch that is still there is
+    # a rename that did not happen. A flag would have its own window — an interrupt
+    # between a successful rename and the assignment would delete a published report.
     def filled(candidate, scratch)
-      moved = false
       File.rename(scratch, candidate)
-      moved = true
 
       candidate
     ensure
-      File.delete(candidate) if !moved && File.exist?(candidate)
+      File.delete(candidate) if File.exist?(scratch) && File.exist?(candidate)
     end
 
     # Walks the candidate names until the block takes one, yielding nil for a name that
