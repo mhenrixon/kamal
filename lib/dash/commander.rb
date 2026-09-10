@@ -171,7 +171,7 @@ class Dash::Commander
     @logging = true
     if modify_started
       ActiveSupport::Notifications.instrument("modify.kamal",
-        command: command, subcommand: subcommand, destination: config.destination, hosts: hosts) { yield }
+        command: command, subcommand: subcommand, destination: config.destination, hosts: hosts, report: report) { yield }
     else
       yield
     end

@@ -124,6 +124,16 @@ class OtelShipperTest < ActiveSupport::TestCase
     assert_equal({ intValue: 3 }, retries[:value])
   end
 
+  # Without this a cached build step ships as the string "false", which a backend cannot
+  # filter on and a human reads as a value that was set.
+  test "event attributes keep booleans boolean" do
+    @shipper.event("dash.build.step", "dash.build.cached": true, "dash.build.uncached": false)
+
+    record = drain_buffer.first
+    assert_equal({ boolValue: true }, record[:attributes].find { |a| a[:key] == "dash.build.cached" }[:value])
+    assert_equal({ boolValue: false }, record[:attributes].find { |a| a[:key] == "dash.build.uncached" }[:value])
+  end
+
   test "event attributes support arrays" do
     @shipper.event("kamal.start", hosts: [ "1.1.1.1", "2.2.2.2" ])
 

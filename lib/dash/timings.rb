@@ -31,10 +31,26 @@ class Dash::Timings
     def current_entry=(entry)
       Thread.current[CURRENT_KEY] = entry
     end
+
+    # Rebuilds a table from what #to_h exported, so `dash report` can print a saved
+    # deploy the way the deploy printed it. The entries come back parentless: their
+    # counters are already the subtree totals #to_h computed, and re-nesting them would
+    # roll those totals up a second time.
+    def from_h(phases)
+      new entries: Array(phases).map { |phase| entry_from(phase.transform_keys(&:to_sym)) }
+    end
+
+    private
+      def entry_from(phase)
+        Entry.new \
+          phase[:name], phase[:seconds].to_f, phase[:detail], phase[:depth].to_i, nil,
+          phase[:commands].to_i, phase[:command_seconds].to_f, phase[:connect_seconds].to_f,
+          phase[:local].nil? ? true : phase[:local]
+      end
   end
 
-  def initialize
-    @entries = []
+  def initialize(entries: [])
+    @entries = entries
     @mutex = Mutex.new
   end
 
@@ -96,6 +112,12 @@ class Dash::Timings
   # Where an entry's row sits in #lines, so Dash::Report can splice its build rows in
   # under the phase they belong to. Identity, not equality: two phases of the same name
   # and duration are equal as Structs but are not the same row.
+  # The row at a position, so a consumer that saved an index (Dash::Report, reattaching
+  # its build rows to the phase they hung under) can find the entry again.
+  def entry_at(index)
+    @mutex.synchronize { @entries[index] } if index
+  end
+
   def index_of(entry)
     @mutex.synchronize { @entries.index { |candidate| candidate.equal?(entry) } }
   end
@@ -106,6 +128,14 @@ class Dash::Timings
       line += format(" %3d %-5s %5.1fs", totals[:commands], totals[:local] ? "local" : "ssh", totals[:command_seconds]) if totals[:commands] > 0
       entry.detail ? "#{line} (#{entry.detail})" : line
     end
+  end
+
+  # A top-level phase's wall time by name, for consumers that know a phase by what it is
+  # called rather than by where it sits — the post-deploy hook's build and boot runtimes.
+  # Depth-0 only: a per-host row inside Boot is named after the host, but a role could be
+  # named "Boot" and must not be mistaken for the phase.
+  def seconds_for(name)
+    @mutex.synchronize { @entries.find { |entry| entry.name == name && entry.depth.to_i.zero? }&.seconds }
   end
 
   # The command counts here are subtree totals, matching what the table prints — phases

@@ -202,4 +202,42 @@ class TimingsTest < ActiveSupport::TestCase
     assert_equal "healthy after 0.5s", host[:detail]
     assert_equal 1, host[:commands]
   end
+
+  test "from_h rebuilds a table that renders the same lines" do
+    @timings.record("Startup (load, config)", 1.0)
+
+    @timings.phase("Boot") do
+      @timings.phase("web 1.1.1.1", depth: 1) do |entry|
+        entry.detail = "healthy after 0.5s"
+        @timings.attribute_command(2.0, local: false)
+        @timings.attribute_connect(0.25)
+      end
+    end
+
+    assert_equal @timings.lines, Dash::Timings.from_h(@timings.to_h).lines
+  end
+
+  test "from_h keeps the exported subtree totals rather than summing them again" do
+    @timings.phase("Boot") do
+      @timings.phase("web 1.1.1.1", depth: 1) { @timings.attribute_command(2.0, local: false) }
+    end
+
+    assert_equal @timings.to_h, Dash::Timings.from_h(@timings.to_h).to_h
+  end
+
+  test "from_h accepts the string keys a JSON round trip leaves behind" do
+    @timings.record("Startup (load, config)", 1.0)
+
+    rebuilt = Dash::Timings.from_h(JSON.parse(JSON.generate(@timings.to_h)))
+
+    assert_equal @timings.lines, rebuilt.lines
+  end
+
+  test "entry_at addresses a row by position so a build report can be reattached" do
+    @timings.record("Startup (load, config)", 1.0)
+    @timings.phase("Build and push app image") { }
+
+    assert_equal "Build and push app image", @timings.entry_at(1).name
+    assert_nil @timings.entry_at(9)
+  end
 end

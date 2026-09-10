@@ -70,6 +70,23 @@ class BuildReportTest < ActiveSupport::TestCase
     assert_equal "[build 1/5] RUN step 1", report.to_h[:steps].last[:label]
   end
 
+  test "from_h rebuilds the steps a saved report exported" do
+    report = Dash::Build::Report.new(steps: [ context(25_180_000, 0.2), instruction(1, 4.0, cached: true), internal ], push_seconds: 1.0)
+
+    assert_equal report.to_h, Dash::Build::Report.from_h(report.to_h).to_h
+  end
+
+  test "from_h survives the string keys and string kinds a JSON round trip leaves behind" do
+    report = Dash::Build::Report.new(steps: [ instruction(1, 4.0) ], push_seconds: 1.0)
+
+    rebuilt = Dash::Build::Report.from_h(JSON.parse(JSON.generate(report.to_h)))
+
+    assert_equal "[build 1/5] RUN step 1", rebuilt.steps.sole.label
+    assert_equal :instruction, rebuilt.steps.sole.kind
+    assert_equal 1.0, rebuilt.push_seconds
+    assert_equal 1, rebuilt.dockerfile_steps.size
+  end
+
   private
     def instruction(ordinal, seconds, cached: false)
       Dash::Build::Step.new(ordinal, kind: :instruction).tap do |step|
