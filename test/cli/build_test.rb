@@ -551,12 +551,21 @@ class CliBuildTest < CliTestCase
 
     # The Printer backend does not run commands, so it never feeds an interaction
     # handler the way SSHKit's local backend does. Replay a real buildx stream instead.
+    #
+    # Mocha decides which expectation handles a call by running the matchers, and makes
+    # no promise about how often. The replay is therefore one-shot per command: feeding
+    # the same log twice would double the push seconds it accumulates.
     def stub_build_stream(fixture, failing: false)
       log = File.read("test/fixtures/build/#{fixture}.log")
+      replayed = {}
 
       SSHKit::Backend::Printer.any_instance.stubs(:execute_command)
-      build = SSHKit::Backend::Printer.any_instance.stubs(:execute_command)
-        .with { |command| command.to_command.include?("buildx build") && command.on_stdout(nil, log).then { true } }
+      build = SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with do |command|
+        next false unless command.to_command.include?("buildx build")
+
+        command.on_stdout(nil, log) unless replayed[command.object_id]
+        replayed[command.object_id] = true
+      end
       build.raises(SSHKit::Command::Failed.new("exit status: 1")) if failing
     end
 

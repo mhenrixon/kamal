@@ -63,6 +63,34 @@ class ReportTest < ActiveSupport::TestCase
     assert_match /\A    \[build 4\/5\] RUN step 4\s+error \(process /, @report.lines.last
   end
 
+  test "a context transfer with no DONE reports its size and no fabricated duration" do
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    unfinished = context(340_120_000, nil)
+    @report.build = Dash::Build::Report.new(steps: [ unfinished ])
+
+    assert_equal "    build context                                                    n/a (340.1MB)", @report.lines[1]
+  end
+
+  test "the same failure on every platform of a multi-platform build prints one row" do
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    amd64, arm64 = instruction(1, nil), instruction(1, nil)
+    amd64.platform, arm64.platform = "linux/amd64", "linux/arm64"
+    amd64.error = arm64.error = "did not complete successfully: exit code: 1"
+    @report.build = Dash::Build::Report.new(steps: [ amd64, arm64 ])
+
+    assert_equal 1, @report.lines.count { |line| line.include?("error") }
+  end
+
+  test "different failures on the same step still each get a row" do
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    first, second = instruction(1, nil), instruction(1, nil)
+    first.error = "exit code: 1"
+    second.error = "exit code: 2"
+    @report.build = Dash::Build::Report.new(steps: [ first, second ])
+
+    assert_equal 2, @report.lines.count { |line| line.include?("error") }
+  end
+
   test "a long instruction is capped so one row cannot run off the terminal" do
     @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
     long = instruction(1, 4.0)

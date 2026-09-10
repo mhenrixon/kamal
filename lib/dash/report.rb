@@ -38,15 +38,23 @@ class Dash::Report
     return [] unless build&.any?
 
     rows = []
-    rows << row("build context", seconds(build.context_seconds), human_bytes(build.context_bytes)) if build.context_bytes
+    rows << context_row if build.context_bytes
     build.slowest(SLOWEST_STEPS).select(&:seconds).each { |step| rows << row(step.label, seconds(step.seconds)) }
     rows << row("cached steps", "#{build.cached_steps.size} of #{build.dockerfile_steps.size}") if build.dockerfile_steps.any?
     rows << export_row if export_and_push_seconds > 0
-    build.failed_steps.each { |step| rows << row(step.label, "error", step.error) }
+    # A multi-platform build runs the same instruction once per platform, so one broken
+    # step fails once per platform with the same message. Print that once.
+    build.failed_steps.uniq { |step| [ step.label, step.error ] }.each { |step| rows << row(step.label, "error", step.error) }
     rows
   end
 
   private
+    # A build killed between the context transfer and that vertex's DONE has a size but
+    # no duration. "0.0s" would be a measurement nobody took.
+    def context_row
+      row "build context", build.context_seconds ? seconds(build.context_seconds) : "n/a", human_bytes(build.context_bytes)
+    end
+
     def export_row
       note = "cache export #{seconds(build.cache_export_seconds)}" if build.cache_export_seconds > 0
       row "export + push", seconds(export_and_push_seconds), note
