@@ -36,45 +36,65 @@ class Dash::Report::Writer
   end
 
   private
-    # Written under a private temporary name, then moved onto a name claimed with an
-    # exclusive create. The create is the check and the claim in one step and never
-    # replaces — two runs racing for the same name (started_at is recorded to the second,
-    # and `safe` maps `eu/west` and `eu-west` onto the same string) each end up with their
-    # own file — and it needs nothing a filesystem might lack, unlike a hard link. The
-    # rename that follows is onto a placeholder only this run holds, so it is atomic and
-    # a deploy interrupted mid-write leaves a stray temporary file rather than a
-    # truncated report that nothing would ever prune.
+    # The name and the content arrive together, always. A hard link publishes a file
+    # that is already complete, atomically, and only if the name is free — so two runs
+    # racing for one name (started_at is recorded to the second, and `safe` maps
+    # `eu/west` and `eu-west` onto the same string) each keep their own report, and
+    # there is never a moment where a report exists empty or half-written. That last
+    # part matters more than it sounds: every reader skips a file it cannot parse, and
+    # the prune only counts the files it could read, so anything left behind here would
+    # stay in the directory forever.
     def publish(content)
       scratch = File.join(directory, ".#{base_name}.#{Process.pid}.tmp")
       File.write(scratch, content)
 
-      fill claim, scratch
+      begin
+        linked(scratch)
+      rescue SystemCallError
+        created(content)
+      end
     ensure
       File.delete(scratch) if scratch && File.exist?(scratch)
     end
 
+    def linked(scratch)
+      claim do |candidate|
+        File.link(scratch, candidate)
+        candidate
+      rescue Errno::EEXIST
+        nil
+      end
+    end
+
+    # For a filesystem with no hard links, where the alternative would be a rename —
+    # and a rename replaces, which would put the overwriting back on exactly the mounts
+    # least likely to be tested. An exclusive create claims the name, and the content
+    # goes in through the same descriptor, so nothing else can take the name and no
+    # empty file is ever visible. A write that fails takes the name back down with it.
+    def created(content)
+      claim do |candidate|
+        File.open(candidate, File::WRONLY | File::CREAT | File::EXCL) { |file| file.write(content) }
+        candidate
+      rescue Errno::EEXIST
+        nil
+      rescue StandardError
+        File.delete(candidate) if File.exist?(candidate)
+        raise
+      end
+    end
+
+    # Walks the candidate names until the block takes one, yielding nil for a name that
+    # was already gone. Suffixed names sort after the one they collided with, which
+    # Dash::Report::History#order_key relies on to read them back in run order.
     def claim
       suffix = 1
       candidate = File.join(directory, "#{base_name}.json")
 
-      begin
-        File.open(candidate, File::WRONLY | File::CREAT | File::EXCL) { }
-      rescue Errno::EEXIST
+      until (claimed = yield candidate)
         candidate = File.join(directory, "#{base_name}-#{suffix += 1}.json")
-        retry
       end
 
-      candidate
-    end
-
-    # A placeholder that could not be filled must not survive as an empty report: no
-    # reader could parse it, so nothing would ever prune it.
-    def fill(candidate, scratch)
-      File.rename(scratch, candidate)
-      candidate
-    rescue SystemCallError
-      File.delete(candidate) if File.exist?(candidate)
-      raise
+      claimed
     end
 
     def base_name

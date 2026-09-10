@@ -139,14 +139,46 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
-  test "a claim that cannot be filled is released rather than left as an empty report" do
+  # The name and the content arrive together, so there is no moment where a report
+  # exists empty. That matters because nothing would ever clear one up: every reader
+  # skips a file it cannot parse, and the prune only counts the files it could read.
+  test "a publish that fails leaves no report at all, not an empty one" do
     in_reports_directory do |directory|
-      File.stubs(:rename).raises(Errno::EACCES, "reports")
+      File.stubs(:write).raises(Errno::ENOSPC, "reports")
 
-      assert_raises(Errno::EACCES) { write(directory: directory) }
+      assert_raises(Errno::ENOSPC) { write(directory: directory) }
       assert_empty Dir.children(directory).grep(/\.json\z/)
     ensure
-      File.unstub(:rename)
+      File.unstub(:write)
+    end
+  end
+
+  test "a filesystem with no hard links still claims a name rather than replacing one" do
+    in_reports_directory do |directory|
+      FileUtils.mkdir_p directory
+      File.write File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"), "theirs"
+      File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
+
+      path = write(directory: directory)
+
+      assert_equal "2026-09-10T12-00-00Z-default-deploy-2.json", File.basename(path)
+      assert_equal "theirs", File.read(File.join(directory, "2026-09-10T12-00-00Z-default-deploy.json"))
+      assert_equal "deploy", document(path)[:command]
+    ensure
+      File.unstub(:link)
+    end
+  end
+
+  test "a publish that fails without hard links leaves no half-written report" do
+    in_reports_directory do |directory|
+      File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
+      File.any_instance.stubs(:write).raises(Errno::ENOSPC, "reports")
+
+      assert_raises(Errno::ENOSPC) { write(directory: directory) }
+      assert_empty Dir.children(directory).grep(/\.json\z/)
+    ensure
+      File.unstub(:link)
+      File.any_instance.unstub(:write)
     end
   end
 
