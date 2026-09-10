@@ -1,0 +1,94 @@
+lib/dash/timings.rb
+  s_8696d9393d8ccc::t_0aa5e72b368e0d 34
+  s_8696d9393d8ccc::t_0e4351b90542e8 35-39,49,115-120
+  s_8696d9393d8ccc::t_0a6d986ccf162d 133-140
+  s_8696d9393d8ccc::t_093575676c8cfd 40-48,52-53
+lib/dash/otel_shipper.rb
+  s_8696d9393d8ccc::t_25e50ea0aee33a 134-138
+lib/dash/commander.rb
+  s_8696d9393d8ccc::t_25e50ea0aee33a 174
+test/cli/main_test.rb
+  s_8696d9393d8ccc::t_aa9fab331f4824 1143-1183,1185-1189,1191-1201,1205-1250,1274-1301
+  s_8696d9393d8ccc::t_50f46ef088c706 1184,1190,1202-1204
+lib/dash/cli/templates/sample_hooks/post-deploy.sample
+  s_8696d9393d8ccc::t_6821385b68520e 13-17
+docs/app/views/docs/pages/deploy_report.rb
+  s_8696d9393d8ccc::t_c5e6c0c48e3182 17-21,157-300,310
+lib/dash/report.rb
+  s_8696d9393d8ccc::t_19e493cf54ace1 29-33,37-49,55-64
+lib/dash/cli/base.rb
+  s_8696d9393d8ccc::t_b1b66b9afc4c91 186,216-217,246-248,253
+  s_8696d9393d8ccc::t_fa30e62c8419d4 2,152-156,161-185,187-215,225-228
+  s_8696d9393d8ccc::t_4d3794315878dd 218-224
+lib/dash/report/history.rb
+  s_8696d9393d8ccc::t_688625f0285879 1-57
+test/report/trends_test.rb
+  s_8696d9393d8ccc::t_1bc08b1bf56a33 1-4,6-11,13-15,17-23,25-33,35-40,42-47,49-52,54-55,57-60,62-66,68-75,77-83,85-91,93-102
+  s_8696d9393d8ccc::t_5f3afea29ea9c3 5,12,16,24,34,41,48,53,56,61,67,76,84,92
+test/output/otel_logger_test.rb
+  s_8696d9393d8ccc::t_fb5a273fe218ee 77-124,127-131,149-168
+  s_8696d9393d8ccc::t_b041fd89c748b3 125-126
+test/cli/report_test.rb
+  s_8696d9393d8ccc::t_19d6594eafaa1a 1-7,16-24,26-34,37-73,76,84-99,102-108,111-112,122-124,126-127,129-147
+  s_8696d9393d8ccc::t_db52096634e6f6 74,78-83
+  s_8696d9393d8ccc::t_4e013472fc153e 36
+  s_8696d9393d8ccc::t_07933d9c7b1f74 109-110,113-121,125,128
+  s_8696d9393d8ccc::t_6ff8284a626a5c 25,35,75,77,100-101
+  s_8696d9393d8ccc::t_aff8a261890308 8-15
+test/timings_test.rb
+  s_8696d9393d8ccc::t_bfffdf9039deb3 205-242
+test/build/report_test.rb
+  s_8696d9393d8ccc::t_efd4f6e7070f36 73-89
+lib/dash/build/report.rb
+  s_8696d9393d8ccc::t_4c252e85e43165 10-18
+docs/app/views/docs/pages/commands.rb
+  s_8696d9393d8ccc::t_0e5d70d1b39bc9 80-82,145
+test/otel_shipper_test.rb
+  s_8696d9393d8ccc::t_19ca1c891e6697 127-135
+test/report/writer_test.rb
+  s_8696d9393d8ccc::t_8eb9141c46283d 1,3-108,122-127,129-130,140-155
+  s_8696d9393d8ccc::t_eb37e5478ea639 2,128,131-139
+  s_8696d9393d8ccc::t_6154494f453d7e 109-121
+test/cli/cli_test_case.rb
+  s_8696d9393d8ccc::t_6ceb783380104f 14-19,26
+lib/dash/report/writer.rb
+  s_8696d9393d8ccc::t_113f7264c0c252 16,18-20,22-23,32-33,40,43,45,49,52-53
+  s_8696d9393d8ccc::t_82057fbd920089 1-15,17,21,24-31,34-39,41-42,44,46-48,50-51,54-64
+docs/app/views/docs/pages/hooks.rb
+  s_8696d9393d8ccc::t_6821385b68520e 101-112
+lib/dash/cli/main.rb
+  s_8696d9393d8ccc::t_b831ffaa983ad5 316-318
+  s_8696d9393d8ccc::t_0a6d986ccf162d 69,116,142
+lib/dash/output/otel_logger.rb
+  s_8696d9393d8ccc::t_e9937d71352d2c 46,50-98
+lib/dash/build/step.rb
+  s_8696d9393d8ccc::t_4c252e85e43165 11-21,40-43,46-47
+test/report_test.rb
+  s_8696d9393d8ccc::t_0969d7561d3460 252
+  s_8696d9393d8ccc::t_744421e877da8a 205-251,253-264
+lib/dash/dockerfile/finding.rb
+  s_8696d9393d8ccc::t_9edd88665502ae 11-16
+lib/dash/cli/report.rb
+  s_8696d9393d8ccc::t_5535a8a1d7f075 1-36,38-89
+  s_8696d9393d8ccc::t_b831ffaa983ad5 37
+lib/dash/report/trends.rb
+  s_8696d9393d8ccc::t_c0ebfad10216db 1-129
+test/report/history_test.rb
+  s_8696d9393d8ccc::t_e247e6fff0064a 1-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "66746122fc70ebf41a88e69574dbb33a38aa476b",
+  "prompts": {},
+  "sessions": {
+    "s_8696d9393d8ccc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "177fc509-e78f-42f6-a630-0695243799e6",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
