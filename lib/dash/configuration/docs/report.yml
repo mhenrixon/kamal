@@ -1,0 +1,38 @@
+# Deploy report
+#
+# Every deploy, redeploy, setup, rollback and standalone build prints a report: a table of
+# where the time went, the build steps underneath it, and advice about the Dockerfile and
+# the build context. The `report` key controls the advice half of that; the table always
+# prints.
+
+# Report options
+#
+# The options are specified under the report key in the configuration file.
+report:
+
+  # Advice
+  #
+  # Print the Advice block under the table. The measurements themselves are always
+  # collected — this only decides whether dash says anything about them.
+  advice: true
+
+  # hadolint
+  #
+  # Supplement dash's own rules with hadolint's when it is installed.
+  #
+  # `auto` runs it when `hadolint` is on PATH and stays silent when it is not; `false`
+  # never runs it. hadolint's exit status never affects the deploy, and its rule codes
+  # (DL3008 and friends) can be silenced through `ignore` like any other rule.
+  hadolint: auto
+
+  # History
+  #
+  # How many JSON reports to keep per destination under .dash/reports. Set to 0 to write
+  # none.
+  history: 20
+
+  # Ignore
+  #
+  # Rule ids to silence. The id is the string printed with each piece of advice.
+  ignore:
+    - root-user

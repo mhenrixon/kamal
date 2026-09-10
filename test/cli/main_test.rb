@@ -1087,6 +1087,59 @@ class CliMainTest < CliTestCase
     end
   end
 
+  test "a deploy prints the Dockerfile advice under the table" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
+      assert_match /\n  Advice\n/, output
+      assert_match /\n    warn  \S+:5\s+COPY \. \. runs before `bundle install` \(line 15\)/, output
+      assert_match /\n\s+→ copy the dependency manifests first/, output
+      assert_operator output.index("  Finished all in"), :<, output.index("  Advice")
+    end
+  end
+
+  test "an ignored rule stays out of the advice block" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    # The fixture ignores inline-env-blob, which the same Dockerfile would otherwise trip.
+    run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
+      assert_no_match(/inline environment assignments/, output)
+      assert_match "the final stage has no USER", output
+    end
+  end
+
+  test "advice: false leaves the table and drops the block" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Configuration::Report.any_instance.stubs(:advice?).returns(false)
+
+    run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
+      assert_match /\n  Build and push app image\s+\d+\.\ds\n/, output
+      assert_no_match(/\n  Advice\n/, output)
+    end
+  end
+
+  # Advice is printed next to the deploy, never in its way: a rule that blows up costs one
+  # yellow line and the deploy carries on.
+  test "an analyzer that raises does not fail the deploy" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Dockerfile::Analyzer.any_instance.stubs(:findings).raises(RuntimeError, "boom")
+
+    run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
+      assert_match "Deploy report unavailable: RuntimeError: boom", output
+      assert_match "Finished all in", output
+      assert_no_match(/\n  Advice\n/, output)
+    end
+  end
+
+  test "the measured build upgrades the advice with real seconds" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    DASH.report.build = Dash::Build::Report.new(steps: [ measured_bundle_install ])
+
+    run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
+      assert_match "(measured 84.1s uncached)", output
+    end
+  end
+
   # The deploy report is only worth having if it is free. Every command a deploy issues is
   # pinned here, so a measurement that quietly costs an extra SSH round trip cannot land
   # unnoticed — and a deliberate reduction has to be explained in the same commit that
@@ -1110,6 +1163,16 @@ class CliMainTest < CliTestCase
   end
 
   private
+    # The one step from the fixture Dockerfile's only stage that the measured half of
+    # copy-before-install looks for.
+    def measured_bundle_install
+      Dash::Build::Step.new(1, kind: :instruction).tap do |step|
+        step.instruction = "RUN bundle install"
+        step.stage, step.ordinal, step.steps_in_stage = "stage-0", 6, 6
+        step.seconds = 84.1
+      end
+    end
+
     # The lock details are a base64 blob of the operator, the time and the version, so
     # they differ on every run and every machine. The command around them is the point.
     def recorded_commands

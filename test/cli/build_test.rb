@@ -146,6 +146,19 @@ class CliBuildTest < CliTestCase
     end
   end
 
+  # A pipeline that builds in one job and deploys in another still gets the advice, with
+  # this build's numbers folded into it.
+  test "a standalone push prints the advice under the build rows" do
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    stub_build_stream "progress_plain_success"
+
+    run_command("push", fixture: :with_report_advice).tap do |output|
+      assert_match(/^  Advice$/, output)
+      assert_match(/^    warn  \S+:5\s+COPY \. \. runs before `bundle install`/, output)
+      assert_operator output.index("    cached steps"), :<, output.index("  Advice")
+    end
+  end
+
   test "a build that fails still leaves the step that broke in the report" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
     stub_build_stream "progress_plain_failed", failing: true

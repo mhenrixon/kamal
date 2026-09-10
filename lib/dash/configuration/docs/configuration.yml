@@ -229,6 +229,12 @@ logging:
 output:
   ...
 
+# Deploy report
+#
+# Advice printed under the deploy timing table, see dash docs report:
+report:
+  ...
+
 # Aliases
 #
 # Alias configuration, see dash docs alias:

@@ -1,4 +1,5 @@
 require "active_support/core_ext/string/filters"
+require "active_support/core_ext/module/delegation"
 
 # The deploy report: the phase table plus everything measured inside a phase that the
 # table itself has no column for. Today that is the build; the Dockerfile advice and the
@@ -8,6 +9,8 @@ require "active_support/core_ext/string/filters"
 # into the middle of the table, under the phase they belong to, and Timings has no
 # business knowing what a buildx vertex is.
 class Dash::Report
+  delegate :human_bytes, to: Dash::Utils
+
   # Depth-1 rows, so build steps line up with the per-host rows a Boot phase prints.
   INDENT = "    "
   # Wider than the phase table's 36-column name, because a Dockerfile instruction is the
@@ -17,20 +20,58 @@ class Dash::Report
   VALUE_WIDTH = 7
   SLOWEST_STEPS = 5
 
+  # Severity, then the file or key to open, then the sentence. The suggestion hangs under
+  # the sentence so the eye can skip the whole block or read one finding in full.
+  SEVERITY_WIDTH = 4
+  LOCATION_WIDTH = 15
+  SEVERITY_COLORS = { warn: "\e[33m" }.freeze
+
   attr_reader :timings
-  attr_accessor :build, :build_entry
+  attr_accessor :build, :build_entry, :advice
 
   def initialize(timings:)
     @timings = timings
+    @advice = []
   end
 
   def lines
     lines = timings.lines
     rows = build_lines
-    return lines if rows.empty?
 
-    index = build_entry && timings.index_of(build_entry)
-    index ? lines.insert(index + 1, *rows) : lines + rows
+    unless rows.empty?
+      index = build_entry && timings.index_of(build_entry)
+      lines = index ? lines.insert(index + 1, *rows) : lines + rows
+    end
+
+    lines + advice_lines
+  end
+
+  # Runs the Dockerfile rules against the file this deploy would build, upgraded with what
+  # the build measured when there was one. Silent about a Dockerfile that is not there:
+  # a --skip-push deploy never looks at one, and a missing file is `dash doctor`'s finding
+  # to report, not a deploy's.
+  def analyze!(config, build: @build)
+    return unless config.report.advice?
+
+    dockerfile = File.expand_path(config.builder.dockerfile, config.builder.build_directory)
+    return unless File.exist?(dockerfile)
+
+    @advice = Dash::Dockerfile::Analyzer.new(
+      document: Dash::Dockerfile::Parser.parse(File.read(dockerfile)),
+      path: config.builder.dockerfile,
+      context_dir: File.expand_path(config.builder.context, config.builder.build_directory),
+      build: build,
+      builder: config.builder,
+      ignore: config.report.ignore,
+      hadolint: config.report.hadolint?
+    ).findings
+  end
+
+  # Also printed on their own by `dash build push`, for the same reason the build rows are.
+  def advice_lines
+    return [] if advice.blank?
+
+    [ "  Advice", *advice.flat_map { |finding| advice_rows(finding) } ]
   end
 
   # Also printed on their own by `dash build push`, which has no phase table to sit under.
@@ -49,6 +90,23 @@ class Dash::Report
   end
 
   private
+    # The suggestion hangs under the message rather than under the row, so a location
+    # longer than its column (a Dockerfile somewhere deep in the tree) shifts both.
+    def advice_rows(finding)
+      prefix = format("%s%-#{SEVERITY_WIDTH}s  %-#{LOCATION_WIDTH}s ", INDENT, finding.severity, finding.location)
+
+      rows = [ colorize(finding.severity, "#{prefix}#{finding.message}") ]
+      rows << "#{" " * prefix.length}→ #{finding.suggestion}" if finding.suggestion.present?
+      rows
+    end
+
+    # Colour is for the terminal only: a report piped to a file or asserted in a test
+    # should be the same text without the escape codes.
+    def colorize(severity, line)
+      color = SEVERITY_COLORS[severity] if $stdout.tty?
+      color ? "#{color}#{line}\e[0m" : line
+    end
+
     # A build killed between the context transfer and that vertex's DONE has a size but
     # no duration. "0.0s" would be a measurement nobody took.
     def context_row
@@ -73,12 +131,5 @@ class Dash::Report
 
     def seconds(value)
       format("%.1fs", value.to_f)
-    end
-
-    # buildx reports decimal units, so the report does too — an operator comparing the
-    # row with what buildx printed should see the same number.
-    def human_bytes(bytes)
-      divisor, unit = [ [ 1_000_000_000, "GB" ], [ 1_000_000, "MB" ], [ 1_000, "kB" ] ].find { |size, _| bytes >= size }
-      divisor ? format("%.1f%s", bytes.to_f / divisor, unit) : "#{bytes}B"
     end
 end

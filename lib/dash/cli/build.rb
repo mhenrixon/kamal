@@ -184,14 +184,20 @@ class Dash::Cli::Build < Dash::Cli::Base
     def record_build_report(parser)
       return unless parser
 
-      parser.finish
-      DASH.report.build = parser.result
+      guarded_report do
+        parser.finish
+        DASH.report.build = parser.result
 
-      say "Deploy report unavailable: #{parser.error.class}: #{parser.error.message}", :yellow if parser.error
-      print_build_report unless DASH.report.build_entry
-    rescue StandardError => e
-      say "Deploy report unavailable: #{e.class}: #{e.message}", :yellow
-      say e.backtrace.join("\n"), :yellow if ENV["VERBOSE"]
+        say "Deploy report unavailable: #{parser.error.class}: #{parser.error.message}", :yellow if parser.error
+
+        # Inside a deploy the phase table prints these at the end and the deploy runs its
+        # own analysis once the image is delivered. Standalone, this is the only chance.
+        unless DASH.report.build_entry
+          print_build_report
+          DASH.report.analyze!(DASH.config)
+          puts DASH.report.advice_lines
+        end
+      end
     end
 
     # A standalone `dash build push` has no phase table to sit under, but a CI pipeline

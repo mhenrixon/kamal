@@ -70,6 +70,10 @@ class ActiveSupport::TestCase
   setup do
     Dash::Utils.stubs(:docker_arch).returns(DOCKER_ARCH)
     Dash::Docker.stubs(:included_files).returns([])
+    # Same rule, third path out of the process: `report: hadolint: auto` runs hadolint
+    # when it is on PATH, so a developer who has it installed would see different advice
+    # than CI does. Pin it off; test/dockerfile/hadolint_test.rb turns it back on.
+    Dash::Dockerfile::Hadolint.stubs(:available?).returns(false)
   end
 
   # Dash::Commands::Base#ensure_run_directory — the one-shot .kamal -> .dash

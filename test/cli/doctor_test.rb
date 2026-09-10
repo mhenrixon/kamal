@@ -9,6 +9,11 @@ class CliDoctorTest < CliTestCase
     # The Printer backend never sets an exit status, so execute would report
     # every check as failed. Default to success; individual tests override.
     SSHKit::Backend::Abstract.any_instance.stubs(:execute).returns(true)
+
+    # The Dockerfile check reads the file the config points at, which for these fixtures
+    # is dash's own. Pin both halves to fixtures so editing the repo's Dockerfile or its
+    # .dockerignore cannot move a doctor assertion.
+    stub_dockerfile "rails_multistage"
   end
 
   teardown do
@@ -346,7 +351,73 @@ class CliDoctorTest < CliTestCase
     assert_match "WARN workers: no healthcheck", output
   end
 
+  test "doctor reports a Dockerfile with nothing to say" do
+    stub_domain_resolution to: [ "1.1.1.1" ]
+    stub_served_certificate expiring: Time.now + (90 * 86_400)
+
+    run_command("doctor").tap do |output|
+      assert_match "Dockerfile", output
+      assert_match "OK test/fixtures/dockerfiles/rails_multistage.Dockerfile: no findings", output
+      assert_match "Everything looks ready to deploy", output
+    end
+  end
+
+  # Advice is advice: a warning is worth an operator's attention, an informational finding
+  # is worth printing, and neither is a reason to refuse the deploy.
+  test "doctor warns about Dockerfile findings without failing the check" do
+    stub_dockerfile "naive_single_stage"
+    stub_domain_resolution to: [ "1.1.1.1" ]
+    stub_served_certificate expiring: Time.now + (90 * 86_400)
+
+    run_command("doctor").tap do |output|
+      assert_match "WARN test/fixtures/dockerfiles/naive_single_stage.Dockerfile:5: COPY . . runs before `bundle install`", output
+      assert_match "[copy-before-install]", output
+      assert_match "OK test/fixtures/dockerfiles/naive_single_stage.Dockerfile:1: the final stage has no USER", output
+      assert_match "warning(s) to review", output
+    end
+  end
+
+  test "doctor honours the report ignore list" do
+    stub_dockerfile "naive_single_stage"
+    Dash::Configuration::Report.any_instance.stubs(:ignore).returns([ "copy-before-install", "root-user" ])
+    stub_domain_resolution to: [ "1.1.1.1" ]
+    stub_served_certificate expiring: Time.now + (90 * 86_400)
+
+    run_command("doctor").tap do |output|
+      assert_no_match(/copy-before-install/, output)
+      assert_no_match(/root-user/, output)
+      assert_match "[latest-base]", output
+    end
+  end
+
+  # The same condition Dash::Commands::Builder::Base#build_dockerfile raises on, caught
+  # before the operator has spent a deploy finding out.
+  test "doctor fails when the Dockerfile the build needs is missing" do
+    stub_dockerfile "nonexistent"
+    stub_domain_resolution to: [ "1.1.1.1" ]
+    stub_served_certificate expiring: Time.now + (90 * 86_400)
+
+    exception = assert_raises(Dash::Cli::DoctorError) { run_command("doctor") }
+    assert_includes exception.message, "not found — `dash build push` fails with Missing"
+  end
+
+  test "a Dockerfile that cannot be analysed warns instead of crashing the doctor" do
+    Dash::Dockerfile::Parser.stubs(:parse).raises(ArgumentError, "boom")
+    stub_domain_resolution to: [ "1.1.1.1" ]
+    stub_served_certificate expiring: Time.now + (90 * 86_400)
+
+    run_command("doctor").tap do |output|
+      assert_match "could not be analysed (ArgumentError: boom)", output
+      assert_match "warning(s) to review", output
+    end
+  end
+
   private
+    def stub_dockerfile(name)
+      Dash::Configuration::Builder.any_instance.stubs(:dockerfile).returns("test/fixtures/dockerfiles/#{name}.Dockerfile")
+      Dash::Configuration::Builder.any_instance.stubs(:context).returns("test/fixtures/dockerfiles/context")
+    end
+
     def run_command(*command, fixture: "deploy_with_doctor")
       with_argv([ *command, "-c", "test/fixtures/#{fixture}.yml" ]) do
         stdouted { Dash::Cli::Main.start }

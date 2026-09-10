@@ -1,0 +1,15 @@
+service: app
+image: dhh/app
+servers:
+  - "1.1.1.1"
+registry:
+  username: user
+  password: pw
+builder:
+  arch: amd64
+  dockerfile: test/fixtures/dockerfiles/naive_single_stage.Dockerfile
+  context: test/fixtures/dockerfiles/context
+report:
+  hadolint: false
+  ignore:
+    - inline-env-blob
