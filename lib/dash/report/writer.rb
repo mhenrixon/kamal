@@ -51,7 +51,7 @@ class Dash::Report::Writer
       begin
         linked(scratch)
       rescue SystemCallError
-        created(content)
+        created(scratch)
       end
     ensure
       File.delete(scratch) if scratch && File.exist?(scratch)
@@ -66,21 +66,36 @@ class Dash::Report::Writer
       end
     end
 
-    # For a filesystem with no hard links, where the alternative would be a rename —
-    # and a rename replaces, which would put the overwriting back on exactly the mounts
-    # least likely to be tested. An exclusive create claims the name, and the content
-    # goes in through the same descriptor, so nothing else can take the name and no
-    # empty file is ever visible. A write that fails takes the name back down with it.
-    def created(content)
+    # For a filesystem with no hard links. The name is claimed with an exclusive create —
+    # which never replaces, so another run's report is safe — and the completed scratch
+    # file is then renamed onto that placeholder, atomically, so no reader ever sees a
+    # half-written report. The placeholder is the one thing that can be left behind
+    # here, and it is the one thing nothing would ever clean up, so it comes down in an
+    # `ensure`: a full disk and the operator's Ctrl-C (an Interrupt, not a
+    # StandardError) both take the claimed name with them.
+    def created(scratch)
       claim do |candidate|
-        File.open(candidate, File::WRONLY | File::CREAT | File::EXCL) { |file| file.write(content) }
-        candidate
-      rescue Errno::EEXIST
-        nil
-      rescue StandardError
-        File.delete(candidate) if File.exist?(candidate)
-        raise
+        next unless placeholder?(candidate)
+
+        filled(candidate, scratch)
       end
+    end
+
+    def placeholder?(candidate)
+      File.open(candidate, File::WRONLY | File::CREAT | File::EXCL) { }
+      true
+    rescue Errno::EEXIST
+      false
+    end
+
+    def filled(candidate, scratch)
+      moved = false
+      File.rename(scratch, candidate)
+      moved = true
+
+      candidate
+    ensure
+      File.delete(candidate) if !moved && File.exist?(candidate)
     end
 
     # Walks the candidate names until the block takes one, yielding nil for a name that

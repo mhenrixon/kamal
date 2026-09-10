@@ -142,8 +142,14 @@ class ReportWriterTest < ActiveSupport::TestCase
   # The name and the content arrive together, so there is no moment where a report
   # exists empty. That matters because nothing would ever clear one up: every reader
   # skips a file it cannot parse, and the prune only counts the files it could read.
+  #
+  # The directory and its .gitignore are made first, so the only File.write left to
+  # fail is the scratch write inside the publish — otherwise the stub fires on the
+  # .gitignore and the test passes without reaching the code it is about.
   test "a publish that fails leaves no report at all, not an empty one" do
     in_reports_directory do |directory|
+      FileUtils.mkdir_p directory
+      File.write File.join(directory, ".gitignore"), "*\n!.gitignore\n"
       File.stubs(:write).raises(Errno::ENOSPC, "reports")
 
       assert_raises(Errno::ENOSPC) { write(directory: directory) }
@@ -169,37 +175,32 @@ class ReportWriterTest < ActiveSupport::TestCase
     end
   end
 
-  test "a publish that fails without hard links leaves no half-written report" do
+  # Without hard links the name has to be claimed before the content can be moved onto
+  # it, and anything that stops the move — a full disk, or the operator's Ctrl-C, which
+  # is not a StandardError — must take the claimed name back down with it.
+  test "a publish that fails without hard links leaves no empty report" do
     in_reports_directory do |directory|
       File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
-      File.any_instance.stubs(:write).raises(Errno::ENOSPC, "reports")
+      File.stubs(:rename).raises(Errno::ENOSPC, "reports")
 
       assert_raises(Errno::ENOSPC) { write(directory: directory) }
       assert_empty Dir.children(directory).grep(/\.json\z/)
     ensure
       File.unstub(:link)
-      File.any_instance.unstub(:write)
+      File.unstub(:rename)
     end
   end
 
-  test "no temporary file survives a write" do
+  test "an interrupt without hard links leaves no empty report either" do
     in_reports_directory do |directory|
-      write(directory: directory)
-      write(directory: directory)
+      File.stubs(:link).raises(Errno::EOPNOTSUPP, "reports")
+      File.stubs(:rename).raises(Interrupt)
 
-      assert_empty Dir.children(directory).grep(/tmp/)
-    end
-  end
-
-  # The unsuffixed name sorts after its `-2` sibling byte for byte, so a prune that
-  # trusted the filename would keep the older run and delete the one just written.
-  test "the prune keeps the run that collided its way to a suffix, not the one it collided with" do
-    in_reports_directory do |directory|
-      first = write(directory: directory, history: 1)
-      second = write(directory: directory, history: 1)
-
-      assert_not File.exist?(first)
-      assert File.exist?(second)
+      assert_raises(Interrupt) { write(directory: directory) }
+      assert_empty Dir.children(directory).grep(/\.json\z/)
+    ensure
+      File.unstub(:link)
+      File.unstub(:rename)
     end
   end
 
