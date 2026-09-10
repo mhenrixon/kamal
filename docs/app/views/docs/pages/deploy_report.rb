@@ -103,9 +103,12 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
         build context. Each finding names a severity, where to look, what is
         wrong, and — on the line under it — what to do instead.
 
-        Some rules are **measured**: they only fire when a build actually ran, and
-        they quote its numbers. "Your `COPY . .` busts the bundle install" is a
-        hint; "…and that install cost 84.1 seconds in this build" is a decision.
+        Some rules are **measured**: when a build actually ran, they quote its
+        numbers. Three of them (`context-size`, `cache-export-cost`,
+        `uncached-install`) have nothing to say without a build; the other two
+        fire on the file alone and add the measurement when there is one. "Your
+        `COPY . .` busts the bundle install" is a hint; "…and that install cost
+        84.1 seconds in this build" is a decision.
 
         Advice is never in the deploy's way. It runs after the image is delivered
         and before the boot, so it prints even when the boot fails, and anything
@@ -121,7 +124,9 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
   def rules
     DocsUI::Section("The rules") do
       md <<~'MD'
-        Every finding carries a rule id. Measured rules are marked ⏱.
+        Every finding carries a rule id. Rules marked ⏱ quote the build's numbers
+        when there is a build; `context-size`, `cache-export-cost` and
+        `uncached-install` fire only then.
 
         | Rule | What it means |
         |---|---|
@@ -139,7 +144,7 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
         | `inline-env-blob` | More than twenty inline `KEY=value` assignments in front of one command, so editing any of them rebuilds the layer. |
         | `no-cache-mount` | A dependency install without `--mount=type=cache`. The suggestion names the directory your package manager expects. |
         | `uncached-install` ⏱ | An install missed the cache and cost real time, and no broad copy above it explains why. |
-        | `root-user` | The final stage has no `USER`, so the container runs as root. |
+        | `root-user` | The final stage sets no `USER`, so the container runs as whatever the base image does — usually root. |
       MD
     end
   end
@@ -152,7 +157,7 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
       DocsUI::Code(<<~YAML, lexer: :yaml)
         report:
           advice: true          # print the Advice block at all
-          hadolint: auto        # also run hadolint when it is on PATH; false to never
+          hadolint: auto        # also run hadolint when it is on PATH; false to never (anything else is an error)
           ignore:
             - root-user         # any rule id above, or a hadolint code like DL3008
       YAML

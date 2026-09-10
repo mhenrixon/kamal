@@ -26,10 +26,12 @@ class Dash::Dockerfile::Analyzer
   # fails the check, a deploy stays quiet (a --skip-push deploy has no Dockerfile and no
   # business complaining about it).
   def self.for_file(path, **options)
-    new document: Dash::Dockerfile::Parser.parse(File.read(path)), path: path, **options
+    new document: Dash::Dockerfile::Parser.parse(File.read(path)), path: path, file: path, **options
   end
 
-  def initialize(document:, context_dir: nil, build: nil, builder: nil, path: "Dockerfile", ignore: [], hadolint: false)
+  # `path` is what findings print (the operator's own `builder: dockerfile:`); `file` is
+  # where the file actually is, for the one rule that has to open it again.
+  def initialize(document:, context_dir: nil, build: nil, builder: nil, path: "Dockerfile", file: path, ignore: [], hadolint: false)
     # A context that is not a local directory (a git URL, or a clone that has not been
     # prepared yet) is not something the .dockerignore rules can say anything about.
     directory = context_dir if context_dir && File.directory?(context_dir)
@@ -37,6 +39,7 @@ class Dash::Dockerfile::Analyzer
     @context = Dash::Dockerfile::Context.new \
       document: document, context_dir: directory, dockerignore: (Dash::Dockerfile::Dockerignore.in(directory) if directory),
       build: build, builder: builder, path: path
+    @file = file
     @ignore = Array(ignore).map(&:to_s)
     @hadolint = hadolint
   end
@@ -58,6 +61,6 @@ class Dash::Dockerfile::Analyzer
     def hadolint_findings
       return [] unless @hadolint
 
-      Dash::Dockerfile::Hadolint.new(path: @context.path).findings
+      Dash::Dockerfile::Hadolint.new(path: @context.path, file: @file).findings
     end
 end

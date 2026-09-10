@@ -1,4 +1,5 @@
 require "active_support/core_ext/module/delegation"
+require "active_support/core_ext/string/inflections"
 
 # A rule looks at the analysis context and returns findings. Nothing else: no IO, no
 # state, no ordering assumptions about the other rules.

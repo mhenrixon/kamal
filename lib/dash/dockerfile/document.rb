@@ -22,6 +22,7 @@ class Dash::Dockerfile::Document
   def each_instruction(name)
     return to_enum(:each_instruction, name) unless block_given?
 
+    name = name.to_s.upcase
     instructions.each { |instruction| yield instruction if instruction.name == name }
   end
 end

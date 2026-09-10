@@ -17,7 +17,7 @@ class Dash::Dockerfile::Dockerignore
     @patterns = lines
       .map(&:strip)
       .reject { |line| line.empty? || line.start_with?("#", "!") }
-      .map { |line| line.delete_prefix("**/").delete_prefix("/").delete_suffix("/") }
+      .map { |line| line.delete_prefix("**/").delete_prefix("./").delete_prefix("/").delete_suffix("/") }
       .reject(&:empty?)
   end
 

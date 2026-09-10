@@ -147,6 +147,26 @@ class DockerfileParserTest < ActiveSupport::TestCase
     assert_predicate document.stages.first, :interpolated_tag?
   end
 
+  test "a registry port is part of the image, not the tag" do
+    document = parse("FROM localhost:5000/ubuntu\nFROM registry.example.com:443/team/app:1.2 AS b\n")
+
+    assert_equal [ "localhost:5000/ubuntu", "registry.example.com:443/team/app" ], document.stages.map(&:image)
+    assert_equal [ nil, "1.2" ], document.stages.map(&:tag)
+  end
+
+  test "an unterminated heredoc does not swallow the rest of the file" do
+    document = parse("FROM alpine:3.20\nRUN printf '%s' '<<EOF'\nRUN echo still parsed\nUSER app\n")
+
+    assert_equal [ "FROM", "RUN", "RUN", "USER" ], document.instructions.map(&:name)
+    assert_equal "echo still parsed", document.instructions[2].args
+  end
+
+  test "only an explicit AS name can be inherited from" do
+    document = parse("FROM alpine:3.20\nFROM stage-0\n")
+
+    assert_equal [ false, true ], document.stages.map(&:shipped?)
+  end
+
   test "an empty Dockerfile parses to nothing rather than raising" do
     document = parse("")
 

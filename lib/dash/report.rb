@@ -50,16 +50,21 @@ class Dash::Report
   # the build measured when there was one. Silent about a Dockerfile that is not there:
   # a --skip-push deploy never looks at one, and a missing file is `dash doctor`'s finding
   # to report, not a deploy's.
-  def analyze!(config, build: @build)
+  #
+  # `build_directory` is where the Dockerfile and context are read from: the git clone for
+  # a `push`, the working directory for a `dev` build that never clones.
+  def analyze!(config, build: @build, build_directory: config.builder.build_directory)
+    @advice = []
     return unless config.report.advice?
 
-    dockerfile = File.expand_path(config.builder.dockerfile, config.builder.build_directory)
+    dockerfile = File.expand_path(config.builder.dockerfile, build_directory)
     return unless File.exist?(dockerfile)
 
     @advice = Dash::Dockerfile::Analyzer.new(
       document: Dash::Dockerfile::Parser.parse(File.read(dockerfile)),
       path: config.builder.dockerfile,
-      context_dir: File.expand_path(config.builder.context, config.builder.build_directory),
+      file: dockerfile,
+      context_dir: File.expand_path(config.builder.context, build_directory),
       build: build,
       builder: config.builder,
       ignore: config.report.ignore,

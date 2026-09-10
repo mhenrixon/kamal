@@ -159,6 +159,19 @@ class CliBuildTest < CliTestCase
     end
   end
 
+  # `dev` builds the working directory even when the config would clone for `push`, so
+  # the advice has to read the working directory's Dockerfile, not a clone that may not
+  # exist.
+  test "dev analyses the working directory, not the clone directory" do
+    Dash::Configuration::Builder.any_instance.stubs(:git_clone?).returns(true)
+    Dash::Configuration::Builder.any_instance.stubs(:build_directory).returns("/nonexistent/clone")
+    Dash::Configuration::Builder.any_instance.stubs(:dockerfile).returns("test/fixtures/dockerfiles/naive_single_stage.Dockerfile")
+
+    run_command("dev").tap do |output|
+      assert_match(/^  Advice$/, output)
+    end
+  end
+
   test "a build that fails still leaves the step that broke in the report" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
     stub_build_stream "progress_plain_failed", failing: true

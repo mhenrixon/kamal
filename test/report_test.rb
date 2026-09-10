@@ -180,6 +180,22 @@ class ReportTest < ActiveSupport::TestCase
     assert_empty @report.advice
   end
 
+  test "analyze! clears earlier advice when it has nothing to say" do
+    @report.advice = [ finding(:warn, "Dockerfile:1", "stale") ]
+    @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", advice: false)
+
+    assert_empty @report.advice
+  end
+
+  test "analyze! can be pointed at a build directory other than the configured one" do
+    Dir.mktmpdir do |dir|
+      FileUtils.cp "test/fixtures/dockerfiles/naive_single_stage.Dockerfile", File.join(dir, "Dockerfile")
+      @report.analyze! config(dockerfile: "Dockerfile"), build_directory: dir
+
+      assert_includes @report.advice.map(&:rule), "latest-base"
+    end
+  end
+
   test "analyze! stays quiet when there is no Dockerfile to read" do
     @report.analyze! config(dockerfile: "test/fixtures/dockerfiles/nonexistent.Dockerfile")
 

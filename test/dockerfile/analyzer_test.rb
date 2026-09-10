@@ -181,6 +181,96 @@ class DockerfileAnalyzerTest < ActiveSupport::TestCase
     assert_empty analyze("naive_single_stage", build: build).select { |f| f.rule == "uncached-install" }
   end
 
+  test "latest-base skips scratch and warns on an explicit :latest behind an interpolated registry" do
+    findings = analyze_text("ARG REGISTRY\nFROM scratch AS a\nFROM $REGISTRY/ubuntu:latest AS b\nFROM $IMAGE AS c\nFROM localhost:5000/app AS d\n")
+      .select { |f| f.rule == "latest-base" }
+
+    assert_equal [ "Dockerfile:3", "Dockerfile:5" ], findings.map(&:location)
+  end
+
+  test "single-stage-build-deps recognises g++" do
+    findings = analyze_text("FROM ruby:3.4\nRUN apt-get install -y g++\n").select { |f| f.rule == "single-stage-build-deps" }
+
+    assert_match "g++", findings.sole.message
+  end
+
+  test "apt rules see apt-get's global option form" do
+    rules = analyze_text("FROM ruby:3.4\nRUN apt-get -y install git\n").map(&:rule)
+
+    assert_includes rules, "apt-hygiene"
+    assert_includes rules, "no-cache-mount"
+  end
+
+  test "apt-hygiene checks every install in a RUN and the order of the cleanup" do
+    hidden = "FROM ruby:3.4\nRUN apt-get install -y git && apt-get install --no-install-recommends -y curl && rm -rf /var/lib/apt/lists/*\n"
+    early = "FROM ruby:3.4\nRUN rm -rf /var/lib/apt/lists/* && apt-get install --no-install-recommends -y git\n"
+    clean = "FROM ruby:3.4\nRUN apt-get update && apt-get install --no-install-recommends -y git && rm -rf /var/lib/apt/lists/*\n"
+
+    assert_match "recommended packages", analyze_text(hidden).find { |f| f.rule == "apt-hygiene" }.message
+    assert_match "leaves /var/lib/apt/lists", analyze_text(early).find { |f| f.rule == "apt-hygiene" }.message
+    assert_empty analyze_text(clean).select { |f| f.rule == "apt-hygiene" }
+  end
+
+  test "a JSON-form COPY of the tree is a broad copy" do
+    text = "FROM ruby:3.4\nCOPY [\".\", \"/app\"]\nRUN bundle install\n"
+
+    assert_includes analyze_text(text).map(&:rule), "copy-before-install"
+  end
+
+  test "dockerignore patterns may carry a ./ prefix" do
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, ".dockerignore"), "./.git\n")
+
+      assert_empty analyze_text("FROM ruby:3.4\n", context_dir: dir).select { |f| f.rule == "dockerignore-gaps" }
+    end
+  end
+
+  test "cache-busting-arg needs the whole name, not a prefix, and ignores FROM" do
+    prefix = "FROM ruby:3.4\nARG COMMIT\nARG COMMIT_SHA\nENV X=$COMMIT_SHA\nRUN bundle install\n"
+    from = "ARG COMMIT\nFROM app:$COMMIT\nRUN bundle install\n"
+
+    assert_equal [ "Dockerfile:3" ], analyze_text(prefix).select { |f| f.rule == "cache-busting-arg" }.map(&:location)
+    assert_empty analyze_text(from).select { |f| f.rule == "cache-busting-arg" }
+  end
+
+  test "secret-in-build-arg reads the legacy ENV form" do
+    findings = analyze_text("FROM ruby:3.4\nENV API_TOKEN a=b\nENV SAFE x=y\n").select { |f| f.rule == "secret-in-build-arg" }
+
+    assert_equal [ "Dockerfile:2" ], findings.map(&:location)
+  end
+
+  test "cache-export-cost reads the mode option exactly" do
+    build = build_report(step("RUN bundle install", seconds: 100.0), cache_export: 29.4)
+
+    assert_empty analyze_text("FROM ruby:3.4\n", build: build, builder: builder(cache_to: "type=registry,ref=x,scope=mode=max"))
+      .select { |f| f.rule == "cache-export-cost" }
+  end
+
+  test "a short instruction still matches its build step exactly" do
+    build = build_report(step("RUN npm ci", stage: "stage-0", seconds: 40.0))
+    finding = analyze_text("FROM node:22\nCOPY package.json ./\nRUN npm ci\n", build: build).find { |f| f.rule == "uncached-install" }
+
+    assert_match "40.0s uncached", finding.message
+  end
+
+  test "a single-stage build's steps carry no stage name and still match" do
+    build = build_report(step("RUN bundle install", stage: nil, seconds: 84.1))
+
+    assert_match "measured 84.1s", find("naive_single_stage", "copy-before-install", build: build).message
+  end
+
+  test "inline-env-blob counts assignments with quoted values" do
+    assignments = (1..21).map { |i| "K#{i}=\"a b\"" }.join(" ")
+
+    assert_includes analyze_text("FROM ruby:3.4\nRUN #{assignments} ./bin/setup\n").map(&:rule), "inline-env-blob"
+  end
+
+  test "curl-pipe-shell sees sudo flags and process substitution" do
+    text = "FROM ruby:3.4\nRUN curl -fsSL x | sudo -E bash\nRUN bash <(curl -fsSL y)\n"
+
+    assert_equal [ "Dockerfile:2", "Dockerfile:3" ], analyze_text(text).select { |f| f.rule == "curl-pipe-shell" }.map(&:location)
+  end
+
   test "ignored rule ids are dropped" do
     rules = analyze("naive_single_stage", ignore: %w[ root-user latest-base ]).map(&:rule)
 

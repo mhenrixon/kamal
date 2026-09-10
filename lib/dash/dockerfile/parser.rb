@@ -100,6 +100,10 @@ class Dash::Dockerfile::Parser
     # Every heredoc opened on the instruction line consumes lines until its delimiter, in
     # the order they were opened. The bodies are appended to the arguments so rules can
     # match what the instruction actually runs.
+    #
+    # A delimiter that never arrives means this was not a heredoc after all (`'<<EOF'` as
+    # a quoted shell word, or a typo): nothing is consumed, so the rest of the file is
+    # still parsed rather than folded into this one instruction.
     def append_heredocs(text, index)
       delimiters = text.scan(HEREDOC).map(&:last)
       return [ text, index ] if delimiters.empty?
@@ -107,13 +111,11 @@ class Dash::Dockerfile::Parser
       body = []
 
       delimiters.each do |delimiter|
-        while index < lines.size
-          line = lines[index]
-          index += 1
-          break if line.strip == delimiter
+        terminator = (index...lines.size).find { |at| lines[at].strip == delimiter }
+        return [ text, index ] unless terminator
 
-          body << line.strip
-        end
+        body.concat lines[index...terminator].map(&:strip)
+        index = terminator + 1
       end
 
       [ [ text, *body ].join(" "), index ]
@@ -161,15 +163,17 @@ class Dash::Dockerfile::Parser
 
       Dash::Dockerfile::Stage.new \
         name: match && match[:name] || "stage-#{index}",
+        named: !(match && match[:name]).nil?,
         index: index,
         base: (match ? match[:base] : instruction.args),
         from: instruction
     end
 
     # Walk back from the final stage through the bases it inherits. A stage reached only
-    # by `COPY --from=` is not on that chain, which is the point.
+    # by `COPY --from=` is not on that chain, which is the point. Only an explicit `AS`
+    # name can be inherited from; the generated `stage-N` labels are dash's, not BuildKit's.
     def mark_shipped(stages)
-      by_name = stages.to_h { |stage| [ stage.name, stage ] }
+      by_name = stages.select(&:named?).to_h { |stage| [ stage.name, stage ] }
       stage = stages.last
 
       while stage && !stage.shipped?

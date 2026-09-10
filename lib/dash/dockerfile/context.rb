@@ -9,21 +9,22 @@ class Dash::Dockerfile::Context
   # The package managers whose install step is worth protecting from cache busting, and
   # the cache directory each conventionally wants mounted.
   DEPENDENCY_INSTALLS = [
-    [ /\bbundle\s+(?:_[\d._]+_\s+)?install\b/, "/usr/local/bundle/cache (or $BUNDLE_PATH/cache)" ],
+    [ /\bbundle\s+(?:_[\d._]+_\s+)?install\b/, "/usr/local/bundle/cache" ],
     [ /\bnpm\s+(?:ci|install)\b/, "/root/.npm" ],
     [ /\byarn\s+install\b/, "/usr/local/share/.cache/yarn" ],
     [ /\bpnpm\s+install\b/, "/root/.local/share/pnpm/store" ],
     [ /\bbun\s+install\b/, "/root/.bun/install/cache" ],
     [ /\bpip3?\s+install\b/, "/root/.cache/pip" ],
     [ /\bpoetry\s+install\b/, "/root/.cache/pypoetry" ],
-    [ /\bgo\s+mod\s+download\b/, "/root/.cache/go-build" ],
+    [ /\bgo\s+mod\s+download\b/, "/go/pkg/mod" ],
     [ /\bcargo\s+(?:build|fetch)\b/, "/usr/local/cargo/registry" ],
     [ /\bcomposer\s+install\b/, "/root/.composer/cache" ],
     [ /\bmix\s+deps\.get\b/, "/root/.hex" ],
     [ /\bdotnet\s+restore\b/, "/root/.nuget/packages" ]
   ].freeze
 
-  APT_INSTALL = [ /\bapt-get\s+install\b/, "/var/cache/apt" ].freeze
+  # apt takes its options before or after the verb (`apt-get -y install`).
+  APT_INSTALL = [ /\bapt-get\s+(?:-\S+\s+)*install\b/, "/var/cache/apt" ].freeze
 
   # A copy that ships the whole tree, so every commit invalidates it and everything
   # layered on top of it.
@@ -84,14 +85,20 @@ class Dash::Dockerfile::Context
     stage.instructions.any? { |other| other.line < instruction.line && broad_copy?(other) }
   end
 
+  # buildx labels a step with its stage name except in a single-stage build, where it
+  # prints none. A multi-platform build reports the same step once per platform; the
+  # slowest one is the number worth quoting.
   def build_step_for(instruction)
     return unless build
 
     text = normalize(instruction.to_s)
-    candidates = build.instruction_steps.select { |step| step.stage.nil? || step.stage == instruction.stage&.name }
+    candidates = build.instruction_steps.select { |step| same_stage?(step, instruction) }
 
-    best = candidates.max_by { |step| shared_prefix(text, normalize(step.instruction)) }
-    best if best && shared_prefix(text, normalize(best.instruction)) >= MINIMUM_STEP_MATCH
+    best = candidates.max_by { |step| [ shared_prefix(text, normalize(step.instruction)), step.seconds.to_f ] }
+    return unless best
+
+    matched = normalize(best.instruction)
+    best if matched == text || shared_prefix(text, matched) >= MINIMUM_STEP_MATCH
   end
 
   def context_entries(name)
@@ -112,8 +119,12 @@ class Dash::Dockerfile::Context
       nil
     end
 
+    def same_stage?(step, instruction)
+      step.stage.nil? ? document.stages.one? : step.stage == instruction.stage&.name
+    end
+
     def sources(instruction)
-      words = instruction.args.split(/\s+/)
+      words = instruction.json? ? instruction.argv : instruction.args.split(/\s+/)
       words.size > 1 ? words[0..-2] : words
     end
 

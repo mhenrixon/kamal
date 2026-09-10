@@ -9,7 +9,7 @@ class Dash::Dockerfile::Rules::LatestBase < Dash::Dockerfile::Rules::Base
 
   private
     def finding_for(stage)
-      return if built_on_another_stage?(stage) || stage.digest || stage.interpolated_tag?
+      return if built_on_another_stage?(stage) || stage.scratch? || stage.digest || stage.interpolated_tag?
 
       if stage.tag.nil?
         warning at(stage.instructions.first), "FROM #{stage.base} has no tag, so it resolves to :latest", SUGGESTION
@@ -19,6 +19,6 @@ class Dash::Dockerfile::Rules::LatestBase < Dash::Dockerfile::Rules::Base
     end
 
     def built_on_another_stage?(stage)
-      document.stages.any? { |other| other.name == stage.base }
+      document.stages.any? { |other| other.named? && other.name == stage.base }
     end
 end

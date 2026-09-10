@@ -11,9 +11,12 @@ class Dash::Configuration::Report
 
   attr_reader :report_config
 
+  HADOLINT_SETTINGS = [ HADOLINT_AUTO, true, false ].freeze
+
   def initialize(config:)
     @report_config = config.raw_config.report || {}
     validate! @report_config unless @report_config.empty?
+    ensure_valid_hadolint_setting
   end
 
   def advice?
@@ -24,10 +27,10 @@ class Dash::Configuration::Report
     report_config.fetch("hadolint", HADOLINT_AUTO)
   end
 
-  # "auto" means run it when it is on PATH — the availability check itself lives in
-  # Dash::Dockerfile::Hadolint, because only it knows what running costs.
+  # "auto" (or true) means run it when it is on PATH — the availability check itself
+  # lives in Dash::Dockerfile::Hadolint, because only it knows what running costs.
   def hadolint?
-    hadolint.to_s == HADOLINT_AUTO
+    hadolint != false
   end
 
   def history
@@ -41,4 +44,13 @@ class Dash::Configuration::Report
   def to_h
     report_config
   end
+
+  private
+    # A misspelling must not read as "off": the operator would lose findings and never
+    # learn why.
+    def ensure_valid_hadolint_setting
+      return if HADOLINT_SETTINGS.include?(hadolint)
+
+      raise Dash::ConfigurationError, "report/hadolint: must be auto or false, got #{hadolint.inspect}"
+    end
 end

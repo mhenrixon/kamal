@@ -28,9 +28,13 @@ class Dash::Dockerfile::Rules::CacheBustingArg < Dash::Dockerfile::Rules::Base
       stage.instructions.select { |instruction| context.dependency_install?(instruction) }.last&.line
     end
 
+    # A FROM that uses the ARG is pinning its base with it, which is a different thing
+    # and not something "reference it later" could ever fix.
     def reference_before(name, from_line, barrier)
+      pattern = /\$(?:\{#{Regexp.escape(name)}\}|#{Regexp.escape(name)}(?!\w))/
+
       document.instructions.find do |instruction|
-        instruction.line > from_line && instruction.line < barrier && instruction.to_s.match?(/\$\{?#{Regexp.escape(name)}\}?/)
+        instruction.name != "FROM" && instruction.line > from_line && instruction.line < barrier && instruction.to_s.match?(pattern)
       end
     end
 end

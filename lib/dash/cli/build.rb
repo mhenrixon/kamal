@@ -164,7 +164,9 @@ class Dash::Cli::Build < Dash::Cli::Base
       end
     end
   ensure
-    record_build_report parser
+    # `dev` builds the working directory even when `push` would clone, so the advice reads
+    # the Dockerfile here rather than in a clone that may not exist.
+    record_build_report parser, build_directory: "."
   end
 
   private
@@ -181,7 +183,7 @@ class Dash::Cli::Build < Dash::Cli::Base
     # Runs whether the build succeeded or failed: a partial report naming the step that
     # broke is exactly what an operator wants from a failed build. Measurement must never
     # be the reason a build fails, so nothing in here is allowed to raise.
-    def record_build_report(parser)
+    def record_build_report(parser, build_directory: DASH.config.builder.build_directory)
       return unless parser
 
       guarded_report do
@@ -194,7 +196,7 @@ class Dash::Cli::Build < Dash::Cli::Base
         # own analysis once the image is delivered. Standalone, this is the only chance.
         unless DASH.report.build_entry
           print_build_report
-          DASH.report.analyze!(DASH.config)
+          DASH.report.analyze!(DASH.config, build_directory: build_directory)
           puts DASH.report.advice_lines
         end
       end

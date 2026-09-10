@@ -372,7 +372,7 @@ class CliDoctorTest < CliTestCase
     run_command("doctor").tap do |output|
       assert_match "WARN test/fixtures/dockerfiles/naive_single_stage.Dockerfile:5: COPY . . runs before `bundle install`", output
       assert_match "[copy-before-install]", output
-      assert_match "OK test/fixtures/dockerfiles/naive_single_stage.Dockerfile:1: the final stage has no USER", output
+      assert_match "OK test/fixtures/dockerfiles/naive_single_stage.Dockerfile:1: the final stage sets no USER", output
       assert_match "warning(s) to review", output
     end
   end

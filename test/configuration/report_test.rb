@@ -22,6 +22,16 @@ class ConfigurationReportTest < ActiveSupport::TestCase
     assert_equal false, report.hadolint
   end
 
+  test "hadolint: true means auto" do
+    assert config(hadolint: true).report.hadolint?
+  end
+
+  test "an unknown hadolint setting is rejected rather than silently off" do
+    error = assert_raises(Dash::ConfigurationError) { config(hadolint: "always") }
+
+    assert_match "report/hadolint", error.message
+  end
+
   test "history bounds how many reports are kept" do
     assert_equal 0, config(history: 0).report.history
   end

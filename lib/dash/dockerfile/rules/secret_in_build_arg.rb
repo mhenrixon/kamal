@@ -19,8 +19,12 @@ class Dash::Dockerfile::Rules::SecretInBuildArg < Dash::Dockerfile::Rules::Base
   end
 
   private
+    # `ENV KEY value` (legacy form) declares exactly one name, whatever the value holds;
+    # `ENV A=1 B=2` and `ARG NAME[=default]` declare one per assignment.
     def names(instruction)
-      assigned = instruction.args.scan(/(?:\A|\s)([A-Za-z_]\w*)=/).flatten
-      assigned.any? ? assigned : Array(instruction.args.split(/\s+/).first)
+      first = instruction.args.split(/\s+/).first.to_s
+      return [ first ] unless first.include?("=")
+
+      instruction.args.scan(/(?:\A|\s)([A-Za-z_]\w*)=/).flatten
     end
 end

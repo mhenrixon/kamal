@@ -1104,7 +1104,7 @@ class CliMainTest < CliTestCase
     # The fixture ignores inline-env-blob, which the same Dockerfile would otherwise trip.
     run_command("deploy", config_file: "deploy_with_report_advice").tap do |output|
       assert_no_match(/inline environment assignments/, output)
-      assert_match "the final stage has no USER", output
+      assert_match "the final stage sets no USER", output
     end
   end
 

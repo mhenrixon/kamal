@@ -21,8 +21,9 @@ report:
   # Supplement dash's own rules with hadolint's when it is installed.
   #
   # `auto` runs it when `hadolint` is on PATH and stays silent when it is not; `false`
-  # never runs it. hadolint's exit status never affects the deploy, and its rule codes
-  # (DL3008 and friends) can be silenced through `ignore` like any other rule.
+  # never runs it. Any other value is a configuration error rather than a silent off.
+  # hadolint's exit status never affects the deploy, and its rule codes (DL3008 and
+  # friends) can be silenced through `ignore` like any other rule.
   hadolint: auto
 
   # History

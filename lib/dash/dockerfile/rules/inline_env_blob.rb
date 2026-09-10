@@ -1,9 +1,9 @@
 # A wall of inline assignments in front of a command means editing any one value
 # invalidates the layer — and makes the instruction unreadable in the bargain.
 class Dash::Dockerfile::Rules::InlineEnvBlob < Dash::Dockerfile::Rules::Base
-  ASSIGNMENT = /\A[A-Za-z_]\w*=\S*\s+/
+  ASSIGNMENT = /\A[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\\.|\S)*\s+/
   THRESHOLD = 20
-  SUGGESTION = "move them to ARGs or an env file so editing one value does not rebuild the layer"
+  SUGGESTION = "read them from an env file at runtime, or set the build-time ones in one ENV block, so the command line stops changing"
 
   def findings
     document.instructions.filter_map do |instruction|

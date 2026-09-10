@@ -49,10 +49,6 @@ class Dash::Dockerfile::Instruction
     json? ? argv.join(" ") : args
   end
 
-  def location
-    "Dockerfile:#{line}"
-  end
-
   # Collapsed to a single line so it can be compared with what buildx printed for the
   # matching vertex, and so advice can name it without wrapping the terminal.
   def to_s

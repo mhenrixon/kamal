@@ -1,5 +1,6 @@
 require "json"
 require "open3"
+require "active_support/core_ext/string/filters"
 
 # Optional supplement to the built-in rules: whatever `hadolint` has to say about the same
 # file, when the operator already has it installed.
@@ -25,17 +26,22 @@ class Dash::Dockerfile::Hadolint
     end
   end
 
-  def initialize(path:)
+  def initialize(path:, file: path)
     @path = path
+    @file = file
   end
 
   def findings
     return [] unless self.class.available?
 
-    output, status = Open3.capture2(EXECUTABLE, "--format", "json", "--no-fail", @path)
+    output, status = Open3.capture2(EXECUTABLE, "--format", "json", "--no-fail", @file)
     return unavailable("exited #{status.exitstatus}") unless status.success?
+    return [] if output.strip.empty?
 
     JSON.parse(output).map { |issue| finding_for(issue) }
+  rescue JSON::ParserError, TypeError, NoMethodError => e
+    # It ran; what it printed is what dash could not read. Different problem, different line.
+    note("hadolint output could not be parsed (#{e.message.truncate(80)})")
   rescue StandardError => e
     unavailable(e.message)
   end
@@ -51,7 +57,11 @@ class Dash::Dockerfile::Hadolint
     end
 
     def unavailable(reason)
+      note "hadolint could not run (#{reason})"
+    end
+
+    def note(message)
       [ Dash::Dockerfile::Finding.new(rule: "hadolint", severity: :info, location: EXECUTABLE,
-        message: "hadolint could not run (#{reason})", suggestion: "silence this with report: hadolint: false") ]
+        message: message, suggestion: "silence this with report: hadolint: false") ]
     end
 end

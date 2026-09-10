@@ -22,11 +22,26 @@ class DockerfileHadolintTest < ActiveSupport::TestCase
     ], findings.map { |finding| [ finding.rule, finding.severity, finding.location, finding.message ] }
   end
 
-  test "unparsable output becomes one informational finding, not an exception" do
+  test "unparsable output is reported as such, not as a failure to run" do
     stub_hadolint "not json at all"
 
     assert_equal [ "hadolint" ], findings.map(&:rule)
-    assert_match "hadolint could not run", findings.first.message
+    assert_match "hadolint output could not be parsed", findings.first.message
+  end
+
+  test "blank output means no findings" do
+    stub_hadolint ""
+
+    assert_empty findings
+  end
+
+  test "the resolved file is what runs, the display path is what prints" do
+    Dash::Dockerfile::Hadolint.stubs(:available?).returns(true)
+    status = mock("status")
+    status.stubs(:success?).returns(true)
+    Open3.expects(:capture2).with("hadolint", "--format", "json", "--no-fail", "/abs/Dockerfile").returns([ OUTPUT, status ])
+
+    assert_equal "Dockerfile:7", Dash::Dockerfile::Hadolint.new(path: "Dockerfile", file: "/abs/Dockerfile").findings.first.location
   end
 
   test "a non-zero exit becomes one informational finding" do

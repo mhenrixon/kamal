@@ -15,6 +15,6 @@ class Dash::Dockerfile::Rules::CacheExportCost < Dash::Dockerfile::Rules::Base
 
   private
     def mode_max?
-      builder&.cache_to.to_s.include?("mode=max")
+      builder&.cache_to.to_s.split(",").map(&:strip).include?("mode=max")
     end
 end
