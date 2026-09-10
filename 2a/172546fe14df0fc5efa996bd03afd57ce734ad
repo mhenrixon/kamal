@@ -1,0 +1,25 @@
+lib/dash/dockerfile/context.rb
+  s_73db275d72793a::t_6fc68464545fa2 27-30
+lib/dash/dockerfile/rules/apt_hygiene.rb
+  s_73db275d72793a::t_6fc68464545fa2 27
+lib/dash/dockerfile/parser.rb
+  s_73db275d72793a::t_6fc68464545fa2 118,127-136
+test/dockerfile/analyzer_test.rb
+  s_73db275d72793a::t_6fc68464545fa2 303-314
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "2a172546fe14df0fc5efa996bd03afd57ce734ad",
+  "prompts": {},
+  "sessions": {
+    "s_73db275d72793a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "88ea5138-44f6-49f4-b5c3-477665597286",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
