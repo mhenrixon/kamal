@@ -1,0 +1,54 @@
+lib/dash/cli/base.rb
+  s_f29538439be721::t_31e17251c416de 580-582,584-587,590-591
+lib/dash/commands/auditor.rb
+  s_f29538439be721::t_31e17251c416de 17-26
+lib/dash/cli/app/boot.rb
+  s_f29538439be721::t_31e17251c416de 41-44,46-48,51-54,57-64,70
+lib/dash/commands/builder.rb
+  s_f29538439be721::t_31e17251c416de 5
+test/commands/app_test.rb
+  s_f29538439be721::t_31e17251c416de 594-600
+lib/dash/commands/app.rb
+  s_f29538439be721::t_31e17251c416de 6-9,82-93
+test/commands/auditor_test.rb
+  s_f29538439be721::t_31e17251c416de 28-42
+lib/dash/commander.rb
+  s_f29538439be721::t_ff88d6ba535439 10-15
+  s_f29538439be721::t_31e17251c416de 38
+lib/dash/commands/builder/base.rb
+  s_f29538439be721::t_31e17251c416de 17-22
+lib/dash/cli/prune.rb
+  s_f29538439be721::t_31e17251c416de 14,27-30
+test/cli/main_test.rb
+  s_f29538439be721::t_31e17251c416de 450,452-453,478-479
+test/cli/app_test.rb
+  s_f29538439be721::t_9fd607a9db79dc 84-85
+  s_f29538439be721::t_31e17251c416de 22,38-83,206-207,263,266-268,287,303-304,323-324,343-344,379-380,403-404,422-423,453-454,480-481,825-826,839-840,850-851,865-866,874-875,886-887,898-899,931-932,942-943,977-978,998-999,1127-1135,1137-1139
+  s_f29538439be721::t_73d0ffbe2f05ec 1136
+lib/dash/cli/app.rb
+  s_f29538439be721::t_31e17251c416de 43-44
+test/cli/build_test.rb
+  s_f29538439be721::t_31e17251c416de 139-141,156,355-356,360,365-378,617-618,620
+lib/dash/cli/build.rb
+  s_f29538439be721::t_31e17251c416de 243-245,248-249
+test/cli/prune_test.rb
+  s_f29538439be721::t_31e17251c416de 13,39-69,71-77
+test/cli/proxy_test.rb
+  s_f29538439be721::t_31e17251c416de 505-508,532
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "b499661ae38d529f087fd715c36d5aea1595a3dc",
+  "prompts": {},
+  "sessions": {
+    "s_f29538439be721": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1115d9e-256b-445a-8eda-82fb9eb0396a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
