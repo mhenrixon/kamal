@@ -14,6 +14,19 @@ class Dash::Commands::Builder::Base < Dash::Commands::Base
     docker :image, :rm, "--force", config.absolute_image
   end
 
+  # Dropping the old image is housekeeping - a host that never had it is not an error -
+  # so it must not short-circuit whatever it shares a round trip with.
+  #
+  # The `|| true` is parenthesised because `&&` and `||` bind equally and associate left:
+  # ungrouped, an `audit && clean || true && pull` chain lets a FAILED audit fall into the
+  # same `|| true` and pull anyway, exit status 0. The group confines it to the clean.
+  #
+  # Composed only, never executed on its own: SSHKit's command map prefixes an unknown
+  # first word with /usr/bin/env, and the first word here is `(`.
+  def clean_then_pull
+    combine [ "(", *any(clean, [ :true ]), ")" ], pull
+  end
+
   def push(export_action = "registry", tag_as_dirty: false, no_cache: false)
     docker :buildx, :build,
       "--output=type=#{export_action}",

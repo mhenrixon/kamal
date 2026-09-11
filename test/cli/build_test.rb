@@ -136,6 +136,9 @@ class CliBuildTest < CliTestCase
 
   test "a standalone push prints the build rows it measured" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    # Whether the checkout this runs in is dirty must not decide what is printed above
+    # the report - it used to, and the indent assertion below only held on a dirty tree.
+    Dash::Git.stubs(:uncommitted_changes).returns("")
     stub_build_stream "progress_plain_success"
 
     run_command("push", fixture: :without_clone).tap do |output|
@@ -150,6 +153,7 @@ class CliBuildTest < CliTestCase
   # this build's numbers folded into it.
   test "a standalone push prints the advice under the build rows" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(false)
+    Dash::Git.stubs(:uncommitted_changes).returns("")
     stub_build_stream "progress_plain_success"
 
     run_command("push", fixture: :with_report_advice).tap do |output|
@@ -348,13 +352,26 @@ class CliBuildTest < CliTestCase
     assert @executions.none? { |args| args[0..2] == [ :docker, :build ] }
   end
 
+  # The audit line, the stale-image removal and the pull are one round trip per host: the
+  # audit is still written first, and the removal still cannot fail the pull.
   test "pull" do
     run_command("pull").tap do |output|
       assert_match /docker info --format '{{index .RegistryConfig.Mirrors 0}}'/, output
-      assert_match /docker image rm --force dhh\/app:999/, output
-      assert_match /docker pull dhh\/app:999/, output
+      assert_match %r{Pulled image with version 999" >> \.dash/app-audit\.log && \( docker image rm --force dhh/app:999 \|\| true \) && docker pull dhh/app:999}, output
       assert_match "docker inspect -f '{{ .Config.Labels.service }}' dhh/app:999 | grep -x app || (echo \"Image dhh/app:999 is missing the 'service' label\" && exit 1)", output
     end
+  end
+
+  test "pull issues two commands per host" do
+    commands = recorded_commands { run_command("pull") }
+
+    pulls = commands.select { |command| command.include?("docker pull dhh/app:999") }
+    assert_equal DASH.app_hosts.size, pulls.size
+    assert pulls.all? { |command| command.include?("app-audit.log") && command.include?("docker image rm --force") }, pulls.inspect
+
+    # An exact total, not a rounded average: integer division would swallow one extra
+    # command on a single host.
+    assert_equal 2 * DASH.app_hosts.size, commands.count { |command| command.include?("dhh/app:999") }
   end
 
   test "pull with mirror" do
@@ -595,8 +612,10 @@ class CliBuildTest < CliTestCase
       build.raises(SSHKit::Command::Failed.new("exit status: 1")) if failing
     end
 
+    # Deliberately not `stdouted`: it strips, which eats the leading indent of a report
+    # header printed as the first line of the run. Assertions here are about that indent.
     def run_command(*command, fixture: :with_accessories)
-      stdouted { stderred { Dash::Cli::Build.start([ *command, "-c", "test/fixtures/deploy_#{fixture}.yml" ]) } }
+      capture(:stdout) { stderred { Dash::Cli::Build.start([ *command, "-c", "test/fixtures/deploy_#{fixture}.yml" ]) } }
     end
 
     def stub_dependency_checks

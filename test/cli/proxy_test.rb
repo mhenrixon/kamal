@@ -502,6 +502,10 @@ class CliProxyTest < CliTestCase
     Object.any_instance.stubs(:sleep)
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("12345678")
+    # A container already holds the version being booted, and 12345678 is running.
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
+      .with { |*args| args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+      .returns("12345678\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n12345678")
     stub_no_proxy_drift
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
@@ -525,7 +529,7 @@ class CliProxyTest < CliTestCase
       assert_match "docker container start dash-proxy || echo $(cat .dash/proxy/options 2> /dev/null || echo \"--publish 80:80 --publish 443:443 --log-opt max-size=10m\") $(cat .dash/proxy/image 2> /dev/null || echo \"ghcr.io/zoolutions/dash-proxy\"):$(cat .dash/proxy/image_version 2> /dev/null || echo \"#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION}\") $(cat .dash/proxy/run_command 2> /dev/null || echo \"\") | xargs docker run --name dash-proxy --network dash --detach --restart unless-stopped --volume dash-proxy-config:/home/dash-proxy/.config/dash-proxy", output
       assert_match "/usr/bin/env mkdir -p .dash", output
       assert_match %r{docker rename app-web-latest app-web-latest_replaced_.*}, output
-      assert_match "/usr/bin/env mkdir -p .dash/apps/app/env/roles", output
+      assert_match "Booted app version latest\" >> .dash/app-audit.log && mkdir -p .dash/apps/app/env/roles", output
       assert_match "Uploading \"\\n\" to .dash/apps/app/env/roles/web.env", output
       assert_match %r{docker run --detach --restart unless-stopped --name app-web-latest --network dash --hostname 1.1.1.1-.* --env KAMAL_CONTAINER_NAME="app-web-latest" --env KAMAL_VERSION="latest" --env KAMAL_HOST="1.1.1.1" --env-file .dash/apps/app/env/roles/web.env --log-opt max-size="10m" --label service="app" --label role="web" --label destination dhh/app:latest}, output
       assert_match "docker exec dash-proxy dash-proxy deploy app-web --target=\"12345678:80\" --deploy-timeout=\"6s\" --drain-timeout=\"30s\" --buffer-requests --buffer-responses --log-request-header=\"Cache-Control\" --log-request-header=\"Last-Modified\" --log-request-header=\"User-Agent\"", output

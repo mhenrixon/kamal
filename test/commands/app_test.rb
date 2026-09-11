@@ -591,6 +591,13 @@ class CommandsAppTest < ActiveSupport::TestCase
       new_command.current_running_version.join(" ")
   end
 
+  test "boot_state pairs the version clash check with the running version in one command" do
+    assert_equal \
+      "docker container ls --all --filter 'name=^app-web-999$' --quiet ; echo --%-- ; " \
+      "sh -c 'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting' | head -1 | while read line; do echo ${line#app-web-}; done",
+      new_command.boot_state("999").join(" ")
+  end
+
   test "list_versions" do
     assert_equal \
       "docker ps --filter label=service=app --filter label=destination= --filter label=role=web --format \"{{.Names}}\" | while read line; do echo ${line#app-web-}; done",

@@ -447,14 +447,12 @@ class CliMainTest < CliTestCase
   test "rollback good version" do
     Object.any_instance.stubs(:sleep)
     [ "web", "workers" ].each do |role|
+      # One capture: no clashing container for 123, version-to-rollback running now.
       SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-        .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-#{role}-123$'", "--quiet", raise_on_non_zero_exit: false)
-        .returns("").at_least_once
+        .with { |*args| args.join(" ").include?("'name=^app-#{role}-123$'") && args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+        .returns("\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\nversion-to-rollback\n").at_least_once
       SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
         .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-#{role}-123$'", "--quiet")
-        .returns("version-to-rollback\n").at_least_once
-      SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-        .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=#{role} --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=#{role} --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-#{role}-}; done", raise_on_non_zero_exit: false)
         .returns("version-to-rollback\n").at_least_once
     end
 
@@ -477,14 +475,11 @@ class CliMainTest < CliTestCase
     Dash::Cli::Main.any_instance.stubs(:container_available?).returns(true)
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-123$'", "--quiet", raise_on_non_zero_exit: false)
-      .returns("").at_least_once
+      .with { |*args| args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+      .returns("\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n").at_least_once # no clash, nothing running
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-123$'", "--quiet")
       .returns("123").at_least_once
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("").at_least_once
 
     run_command("rollback", "123").tap do |output|
       assert_match "docker run --detach --restart unless-stopped --name app-web-123", output
@@ -1267,7 +1262,7 @@ class CliMainTest < CliTestCase
   test "deploy issues no commands beyond the pinned sequence" do
     Dash::Cli::Main.any_instance.stubs(:invoke)
 
-    assert_equal DEPLOY_COMMAND_SEQUENCE, recorded_commands { run_command("deploy", "--skip_push") }
+    assert_equal DEPLOY_COMMAND_SEQUENCE, recorded_deploy_commands { run_command("deploy", "--skip_push") }
   end
 
   private
@@ -1311,13 +1306,8 @@ class CliMainTest < CliTestCase
 
     # The lock details are a base64 blob of the operator, the time and the version, so
     # they differ on every run and every machine. The command around them is the point.
-    def recorded_commands
-      commands = []
-      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
-
-      yield
-
-      commands.map { |command| command.gsub(/echo "[^"]*"/m, %(echo "<details>")) }
+    def recorded_deploy_commands(&block)
+      recorded_commands(&block).map { |command| command.gsub(/echo "[^"]*"/m, %(echo "<details>")) }
     end
 
     def run_command(*command, config_file: "deploy_simple")

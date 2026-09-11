@@ -3,6 +3,10 @@ class Dash::Commands::App < Dash::Commands::Base
 
   ACTIVE_DOCKER_STATUSES = [ :running, :restarting ]
 
+  # Separates the two answers #boot_state returns. A container id is hex and a version is
+  # a name suffix, so neither can produce this line on its own.
+  BOOT_STATE_SEPARATOR = "--%--"
+
   attr_reader :role, :host
 
   delegate :container_name, to: :role
@@ -73,6 +77,20 @@ class Dash::Commands::App < Dash::Commands::Base
     pipe \
       current_running_container(format: "--format '{{.Names}}'"),
       extract_version_from_name
+  end
+
+  # Everything a boot needs to know about a host before it starts anything: whether a
+  # container for the version being deployed already exists (so it can be renamed out of
+  # the way) and which version is running now (so it can be stopped once the new one is
+  # live). Two questions, one round trip, answers split on BOOT_STATE_SEPARATOR.
+  #
+  # Chained with `;` rather than `&&`: an empty answer to either is a normal result, not
+  # a failure, and the second question must be asked whatever the first one said.
+  def boot_state(version)
+    chain \
+      container_id_for_version(version),
+      [ :echo, BOOT_STATE_SEPARATOR ],
+      current_running_version
   end
 
   def list_versions(*docker_args, statuses: nil)

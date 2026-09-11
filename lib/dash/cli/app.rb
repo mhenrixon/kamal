@@ -40,8 +40,8 @@ class Dash::Cli::App < Dash::Cli::Base
 
         # Tag once the app booted on all hosts
         on(DASH.app_hosts) do |host|
-          execute *DASH.auditor.record("Tagging #{DASH.config.absolute_image} as the latest image"), verbosity: :debug
-          execute *DASH.app.tag_latest_image
+          execute *DASH.auditor.record_then("Tagging #{DASH.config.absolute_image} as the latest image",
+            DASH.app.tag_latest_image)
         end
       end
     end

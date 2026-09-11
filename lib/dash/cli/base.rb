@@ -577,10 +577,18 @@ module Dash::Cli
         instance_variable_get("@_invocations")[cli_class].pop
       end
 
+      # Every lock acquire wants the run directory to exist, but the sweep is idempotent
+      # and a process only needs it once per host - the deploy lock and the server lock
+      # were paying for it twice.
       def ensure_run_directory
-        on(DASH.hosts) do
+        pending = DASH.hosts.map(&:to_s) - DASH.run_directory_ensured_on
+        return if pending.empty?
+
+        on(pending) do
           execute(*DASH.server.ensure_run_directory)
         end
+
+        DASH.run_directory_ensured_on.concat(pending)
       end
 
       def with_env(env)

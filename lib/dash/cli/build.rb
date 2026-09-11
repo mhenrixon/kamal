@@ -240,11 +240,13 @@ class Dash::Cli::Build < Dash::Cli::Base
       end
     end
 
+    # Audit, clean and pull share one round trip. validate_image keeps its own: folding it
+    # in would put the pull under validate_image's trailing `|| (echo ... && exit 1)`, and
+    # a failed pull would then report a missing service label.
     def pull_on_hosts(hosts)
       on(hosts) do
-        execute *DASH.auditor.record("Pulled image with version #{DASH.config.version}"), verbosity: :debug
-        execute *DASH.builder.clean, raise_on_non_zero_exit: false
-        execute *DASH.builder.pull
+        execute *DASH.auditor.record_then("Pulled image with version #{DASH.config.version}",
+          DASH.builder.clean_then_pull)
         execute *DASH.builder.validate_image
       end
     end

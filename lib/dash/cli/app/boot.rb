@@ -38,22 +38,36 @@ class Dash::Cli::App::Boot
   end
 
   private
+    # Both answers come back from one round trip, which means the running version is read
+    # before any rename happens. When the clashing container IS the running one, the
+    # version to stop later is the name it was renamed to - the name that was read now
+    # belongs to the container this boot is about to start.
     def old_version_renamed_if_clashing
-      if capture_with_info(*app.container_id_for_version(version), raise_on_non_zero_exit: false).present?
+      clashing_container_id, old_version = capture_boot_state
+
+      if clashing_container_id.present?
         renamed_version = "#{version}_replaced_#{SecureRandom.hex(8)}"
         info "Renaming container #{version} to #{renamed_version} as already deployed on #{host}"
-        audit("Renaming container #{version} to #{renamed_version}")
-        execute *app.rename_container(version: version, new_version: renamed_version)
+        execute *auditor.record_then("Renaming container #{version} to #{renamed_version}",
+          app.rename_container(version: version, new_version: renamed_version))
+
+        old_version = renamed_version if old_version == version
       end
 
-      capture_with_info(*app.current_running_version, raise_on_non_zero_exit: false).strip.presence
+      old_version
+    end
+
+    def capture_boot_state
+      output = capture_with_info(*app.boot_state(version), raise_on_non_zero_exit: false).to_s
+      clashing, _, running = output.partition(/^#{Regexp.escape(Dash::Commands::App::BOOT_STATE_SEPARATOR)}$/)
+
+      [ clashing.strip.presence, running.strip.presence ]
     end
 
     def start_new_version
-      audit "Booted app version #{version}"
       hostname = "#{host.to_s[0...51].chomp(".")}-#{SecureRandom.hex(6)}"
 
-      execute *app.ensure_env_directory
+      execute *auditor.record_then("Booted app version #{version}", app.ensure_env_directory)
       upload! role.secrets_io(host), role.secrets_path, mode: "0600"
 
       execute *app.run(hostname: hostname)
@@ -159,10 +173,6 @@ class Dash::Cli::App::Boot
 
     def auditor
       @auditor = DASH.auditor(role: role)
-    end
-
-    def audit(message)
-      execute *auditor.record(message), verbosity: :debug
     end
 
     def gatekeeper?

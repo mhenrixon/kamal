@@ -175,6 +175,14 @@ class CommandsBuilderTest < ActiveSupport::TestCase
       builder.target.build_options.join(" ")
   end
 
+  # The `|| true` must stay inside the parentheses: `&&` and `||` associate left, so an
+  # ungrouped form lets a failure EARLIER in the composed chain (the audit write this is
+  # folded behind) fall into the same `|| true` and pull anyway.
+  test "clean_then_pull groups the best-effort clean" do
+    assert_equal "( docker image rm --force dhh/app:123 || true ) && docker pull dhh/app:123",
+      new_builder_command.clean_then_pull.join(" ")
+  end
+
   test "validate image" do
     assert_equal "docker inspect -f '{{ .Config.Labels.service }}' dhh/app:123 | grep -x app || (echo \"Image dhh/app:123 is missing the 'service' label\" && exit 1)", new_builder_command.validate_image.join(" ")
   end
