@@ -8,6 +8,12 @@ Dash::Dockerfile::Finding = Struct.new(:rule, :severity, :location, :message, :s
     severity == :warn
   end
 
+  def self.from_h(hash)
+    hash = hash.transform_keys(&:to_sym)
+
+    new(**hash.slice(:rule, :location, :message, :suggestion), severity: hash[:severity].to_sym)
+  end
+
   def to_h
     { rule: rule, severity: severity.to_s, location: location, message: message, suggestion: suggestion }
   end

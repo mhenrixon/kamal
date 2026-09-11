@@ -66,7 +66,7 @@ class Dash::Cli::Main < Dash::Cli::Base
         end
       end
 
-      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s
+      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s, **report_hook_details
     end
   end
 
@@ -113,7 +113,7 @@ class Dash::Cli::Main < Dash::Cli::Base
         end
       end
 
-      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s
+      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s, **report_hook_details
     end
   end
 
@@ -139,7 +139,7 @@ class Dash::Cli::Main < Dash::Cli::Base
         end
       end
 
-      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s if rolled_back
+      run_hook "post-deploy", secrets: true, runtime: runtime.round.to_s, **report_hook_details if rolled_back
     end
   end
 
@@ -312,6 +312,9 @@ class Dash::Cli::Main < Dash::Cli::Base
 
   desc "prune", "Prune old application images and containers"
   subcommand "prune", Dash::Cli::Prune
+
+  desc "report", "Read the deploy reports saved under .dash/reports"
+  subcommand "report", Dash::Cli::Report
 
   desc "registry", "Login and -out of the image registry"
   subcommand "registry", Dash::Cli::Registry

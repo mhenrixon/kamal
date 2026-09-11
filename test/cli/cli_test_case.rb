@@ -11,12 +11,19 @@ class CliTestCase < ActiveSupport::TestCase
 
     # Ensure no loadbalancer functionality interferes with tests
     Dash::Configuration::Proxy.any_instance.stubs(:load_balancing?).returns(false)
+
+    # Every deploy saves a JSON report. The path is relative to the working directory, so
+    # without this the suite would write .dash/reports into this repository — and the
+    # trend rules would start comparing test runs with each other.
+    @reports_directory = Dir.mktmpdir
+    Dash::Cli::Base.any_instance.stubs(:reports_directory).returns(@reports_directory)
   end
 
   teardown do
     ENV.delete("RAILS_MASTER_KEY")
     ENV.delete("MYSQL_ROOT_PASSWORD")
     ENV.delete("VERSION")
+    FileUtils.rm_rf @reports_directory
   end
 
   private

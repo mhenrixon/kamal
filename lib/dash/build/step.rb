@@ -8,6 +8,17 @@ class Dash::Build::Step
   attr_reader :number
   attr_accessor :kind, :name, :platform, :stage, :ordinal, :steps_in_stage, :instruction, :seconds, :cached, :error, :bytes
 
+  def self.from_h(step)
+    step = step.transform_keys(&:to_sym)
+
+    new(step[:number], kind: step[:kind]&.to_sym || :other, name: step[:label]).tap do |rebuilt|
+      rebuilt.platform, rebuilt.stage = step[:platform], step[:stage]
+      rebuilt.ordinal, rebuilt.steps_in_stage = step[:ordinal], step[:steps_in_stage]
+      rebuilt.instruction, rebuilt.seconds = step[:instruction], step[:seconds]
+      rebuilt.cached, rebuilt.bytes, rebuilt.error = !!step[:cached], step[:bytes], step[:error]
+    end
+  end
+
   def initialize(number, kind: :other, name: nil)
     @number = number
     @kind = kind
@@ -26,8 +37,13 @@ class Dash::Build::Step
     !ordinal.nil?
   end
 
+  # `label` is here for whatever reads the JSON — it is the string buildx printed and the
+  # one a human matches against their Dockerfile — and the parts it is built from are here
+  # so #from_h can rebuild it rather than trusting a field a hand-edited file may disagree
+  # with.
   def to_h
     { number: number, kind: kind, label: label, platform: platform, stage: stage, ordinal: ordinal,
-      instruction: instruction, seconds: seconds, cached: cached, bytes: bytes, error: error }
+      steps_in_stage: steps_in_stage, instruction: instruction, seconds: seconds, cached: cached,
+      bytes: bytes, error: error }
   end
 end

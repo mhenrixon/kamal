@@ -77,7 +77,9 @@ class Views::Docs::Pages::Commands < DocsUI::Page
     [ "dash registry <setup|remove|login|logout>", "Manage the local registry or remote registry sessions" ],
     [ "dash lock <status|acquire|release>", "Manage the deploy lock; --server targets the shared server lock instead" ],
     [ "dash prune <all|images|containers>", "Prune old application images and stopped containers" ],
-    [ "dash secrets <fetch|extract|print>", "Helpers for extracting secrets from a vault" ]
+    [ "dash secrets <fetch|extract|print>", "Helpers for extracting secrets from a vault" ],
+    [ "dash report [--last N]", "Print the last saved deploy report, or a trend over the last N" ],
+    [ "dash report path", "Print the directory saved reports are written to" ]
   ].freeze
 
   def content
@@ -140,7 +142,7 @@ class Views::Docs::Pages::Commands < DocsUI::Page
   end
 
   def other_commands
-    DocsUI::Section("server, registry, lock, prune, secrets") do
+    DocsUI::Section("server, registry, lock, prune, secrets, report") do
       command_table OTHERS
     end
   end

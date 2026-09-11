@@ -202,6 +202,66 @@ class ReportTest < ActiveSupport::TestCase
     assert_empty @report.advice
   end
 
+  test "to_h carries the run's own facts alongside the phases, build and advice" do
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    @report.build = build_report
+    @report.advice = [ finding(:warn, "Dockerfile:14", "COPY . . busts the install", "copy the manifests first") ]
+
+    document = @report.to_h(command: "deploy", service: "app", destination: "production", status: "succeeded")
+
+    assert_equal 1, document[:schema]
+    assert_equal Dash::VERSION, document[:dash_version]
+    assert_equal "deploy", document[:command]
+    assert_equal "production", document[:destination]
+    assert_equal [ "Build and push app image" ], document[:phases].map { |phase| phase[:name] }
+    assert_equal 25_180_000, document[:build][:context_bytes]
+    assert_equal [ { rule: "rule", severity: "warn", location: "Dockerfile:14",
+                     message: "COPY . . busts the install", suggestion: "copy the manifests first" } ], document[:advice]
+  end
+
+  test "to_h drops the build and its phase pointer when nothing was built" do
+    @timings.phase("Pull app image") { }
+
+    document = @report.to_h(command: "deploy")
+
+    assert_not document.key?(:build)
+    assert_not document.key?(:build_phase)
+    assert_equal [], document[:advice]
+  end
+
+  test "from_h re-renders a saved report line for line" do
+    @timings.record("Startup (load, config)", 1.0)
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    @timings.phase("Boot") { }
+    @report.build = build_report
+    @report.advice = [ finding(:warn, "Dockerfile:14", "COPY . . busts the install", "copy the manifests first") ]
+
+    document = JSON.parse(JSON.generate(@report.to_h(command: "deploy")))
+
+    assert_equal @report.lines, Dash::Report.from_h(document).lines
+  end
+
+  test "from_h puts the build rows back under the phase they hung under" do
+    @timings.record("Startup (load, config)", 1.0)
+    @timings.phase("Build and push app image") { |entry| @report.build_entry = entry }
+    @timings.phase("Boot") { }
+    @report.build = build_report
+
+    rebuilt = Dash::Report.from_h(JSON.parse(JSON.generate(@report.to_h(command: "deploy"))))
+
+    assert_match(/\ABoot\s+\d+\.\ds\z/, rebuilt.lines.last.strip)
+    assert_match "build context", rebuilt.lines[2]
+  end
+
+  test "from_h brings the advice severities back as symbols so warnings still colour" do
+    @report.advice = [ finding(:warn, "Dockerfile:14", "warned"), finding(:info, "builder.cache", "noted") ]
+
+    rebuilt = Dash::Report.from_h(JSON.parse(JSON.generate(@report.to_h(command: "deploy"))))
+
+    assert_equal [ :warn, :info ], rebuilt.advice.map(&:severity)
+    assert rebuilt.advice.first.warn?
+  end
+
   private
     def finding(severity, location, message, suggestion = nil)
       Dash::Dockerfile::Finding.new(rule: "rule", severity: severity, location: location, message: message, suggestion: suggestion)

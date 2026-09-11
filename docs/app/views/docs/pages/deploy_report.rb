@@ -14,6 +14,11 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
     build_rows
     advice_block
     rules
+    trends
+    saved_reports
+    reading_reports
+    otel
+    hooks
     silencing
   end
 
@@ -149,6 +154,167 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
     end
   end
 
+  def trends
+    DocsUI::Section("Trends") do
+      md <<~'MD'
+        Every deploy saves a JSON report, and the next one compares itself with
+        the ones before it. Once a destination has three retained reports of the
+        same command that succeeded, four more rules can fire — all
+        informational, all comparing against the median of the last five:
+
+        | Rule | What it means |
+        |---|---|
+        | `trend-build` | The build took more than 1.5× its usual time. |
+        | `trend-boot` | The boot took more than 1.5× its usual time. |
+        | `trend-total` | The whole deploy took more than 1.5× its usual time. |
+        | `trend-overhead` | `Startup`, secrets validation and the locks together took over ten seconds, or more than 1.5× their usual. The message names whichever row dominated — a secrets adapter shelling out is the usual answer. |
+
+        They read `.dash/reports` and nothing else: no network, no server, no
+        clock beyond the one the deploy already used. A history that cannot be
+        read — a report half-written by a deploy that was killed, a file dropped
+        in by hand — is skipped without a word.
+      MD
+    end
+  end
+
+  def saved_reports
+    DocsUI::Section("Saved reports") do
+      md <<~'MD'
+        After the advice, dash writes the whole report as JSON and prints where
+        it went:
+
+        ```
+          Report written to .dash/reports/2026-09-10T12-00-00Z-production-deploy.json
+        ```
+
+        Files are named for the UTC time the run started, the destination, and
+        the command. dash keeps the newest `report: history:` of them per
+        destination (20 by default) and deletes the rest; `history: 0` writes
+        none. The directory gets its own `.gitignore` the first time it is used,
+        so a project that commits `.dash/` does not start committing a report on
+        every deploy.
+
+        A deploy that failed is written too, with `"status": "failed"`, the error
+        that ended it, and every phase that had finished — which is usually the
+        run you most want to read afterwards.
+      MD
+      DocsUI::Code(<<~JSON, lexer: :json)
+        {
+          "schema": 1,
+          "dash_version": "4.0.8",
+          "command": "deploy",
+          "service": "app",
+          "destination": "production",
+          "version": "abc1234",
+          "started_at": "2026-09-10T12:00:00Z",
+          "runtime": 196.2,
+          "status": "succeeded",
+          "phases": [
+            { "name": "Startup (load, config)", "depth": 0, "seconds": 0.9, "detail": null,
+              "commands": 0, "command_seconds": 0.0, "connect_seconds": 0.0, "local": true },
+            { "name": "Build and push app image", "depth": 0, "seconds": 140.0, "detail": null,
+              "commands": 0, "command_seconds": 0.0, "connect_seconds": 0.0, "local": true },
+            { "name": "Boot", "depth": 0, "seconds": 55.2, "detail": null,
+              "commands": 12, "command_seconds": 41.0, "connect_seconds": 1.2, "local": false }
+          ],
+          "build_phase": 1,
+          "build": {
+            "context_bytes": 356515840, "context_seconds": 3.2,
+            "cached_steps": 9, "total_steps": 14,
+            "export_seconds": 12.0, "cache_export_seconds": 29.4, "push_seconds": 12.0,
+            "steps": [
+              { "number": 7, "kind": "instruction", "label": "[build 5/9] RUN bundle install",
+                "stage": "build", "ordinal": 5, "steps_in_stage": 9,
+                "instruction": "RUN bundle install", "seconds": 84.1, "cached": false }
+            ]
+          },
+          "advice": [
+            { "rule": "copy-before-install", "severity": "warn", "location": "Dockerfile:14",
+              "message": "…", "suggestion": "…" }
+          ]
+        }
+      JSON
+      md <<~'MD'
+        `schema` is the promise: a reader that does not recognise the number
+        should skip the file rather than guess. `build_phase` is the index into
+        `phases` that the build rows belong under. The command counts on a phase
+        are subtree totals — a parent and its children must not be summed.
+      MD
+    end
+  end
+
+  def reading_reports
+    DocsUI::Section("dash report") do
+      md <<~'MD'
+        `dash report` prints the last saved report for the current destination,
+        rendered exactly as the deploy printed it — same table, same build rows
+        under the same phase, same advice. It is entirely local: no lock, no SSH,
+        nothing that can change a server, so it is safe to run while a deploy is
+        in flight.
+      MD
+      DocsUI::Code(<<~TEXT, lexer: :text)
+        dash report                 # the latest report for this destination
+        dash report -d production   # …for another destination
+        dash report --last 5        # one row per report, oldest first
+        dash report path            # where the reports are written
+      TEXT
+      DocsUI::Code(<<~TEXT, lexer: :text)
+        Last 3 reports for app to production
+          started              version      total    build     boot  advice
+          2026-09-08T09-12-44Z abc1234     118.9s    61.0s    49.1s  2 (1 warn)
+          2026-09-09T17-40-02Z bcd2345     121.4s    63.2s    49.8s  2 (1 warn)
+          2026-09-10T12-00-00Z cde3456     196.2s   140.0s    55.2s  3 (1 warn)
+      TEXT
+    end
+  end
+
+  def otel
+    DocsUI::Section("OpenTelemetry") do
+      md <<~'MD'
+        With an [OTel logger](/docs/output) configured, the same numbers ship as
+        events at the end of the run, alongside the `kamal.complete` /
+        `kamal.failed` events that were already there:
+
+        | Event | One per | Attributes |
+        |---|---|---|
+        | `dash.phase` | table row | `dash.phase.name`, `.depth`, `.seconds`, `.detail`, `.commands`, `.command_seconds`, `.connect_seconds` |
+        | `dash.build` | build | `dash.build.context_bytes`, `.context_seconds`, `.cached_steps`, `.total_steps`, `.export_seconds`, `.cache_export_seconds`, `.push_seconds` |
+        | `dash.build.step` | Dockerfile step | `dash.build.stage`, `.ordinal`, `.instruction`, `.seconds`, `.cached` |
+        | `dash.advice` | finding | `dash.advice.rule`, `.severity`, `.location`, `.message` |
+
+        Each carries the same `deployment.id` as the rest of the run, so a
+        backend can group them. Nothing is uploaded anywhere except the endpoint
+        you configured, and a shipping failure never fails a deploy that
+        succeeded.
+      MD
+    end
+  end
+
+  def hooks
+    DocsUI::Section("Hooks") do
+      md <<~'MD'
+        The `post-deploy` hook gets the summary as environment variables —
+        `DASH_BUILD_RUNTIME`, `DASH_BOOT_RUNTIME`, `DASH_ADVICE_COUNT`,
+        `DASH_ADVICE_WARNINGS` and `DASH_REPORT_PATH`, each with its `KAMAL_*`
+        twin. A phase that did not run contributes no variable at all rather than
+        a zero that reads as "instant". See [Hooks](/docs/hooks).
+
+        Two things about the ordering are worth knowing:
+
+        - Under `dash setup`, the hook fires from the `deploy` it wraps, before
+          the outer report is finalised. `DASH_REPORT_PATH` and the trend findings
+          are therefore absent from that one hook run — the report itself is
+          written as usual, a moment later.
+        - `status` in the saved report covers whatever ran inside the frame that
+          finalised it. A `post-deploy` hook fires after a standalone deploy has
+          written its report, so a hook failure fails the command but the report
+          says `succeeded` — the deploy did. Under `dash setup` the hook fires
+          inside the outer frame, so there the same failure marks the deferred
+          report `failed`.
+      MD
+    end
+  end
+
   def silencing
     DocsUI::Section("Turning it down") do
       md <<~'MD'
@@ -158,6 +324,7 @@ class Views::Docs::Pages::DeployReport < DocsUI::Page
         report:
           advice: true          # print the Advice block at all
           hadolint: auto        # also run hadolint when it is on PATH; false to never (anything else is an error)
+          history: 20           # JSON reports to keep per destination; 0 writes none
           ignore:
             - root-user         # any rule id above, or a hadolint code like DL3008
       YAML

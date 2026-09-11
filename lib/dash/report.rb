@@ -26,12 +26,42 @@ class Dash::Report
   LOCATION_WIDTH = 15
   SEVERITY_COLORS = { warn: "\e[33m" }.freeze
 
+  # The version of the JSON documents #to_h writes and #from_h reads. Bumping it is a
+  # promise to whatever reads .dash/reports, so a reader that does not recognise the
+  # number skips the file rather than guessing.
+  SCHEMA = 1
+
   attr_reader :timings
   attr_accessor :build, :build_entry, :advice
+
+  # Rebuilds a saved report so `dash report` prints it the way the deploy printed it —
+  # same table, same build rows under the same phase, same advice.
+  def self.from_h(document)
+    document = document.transform_keys(&:to_sym)
+    timings = Dash::Timings.from_h(document[:phases])
+
+    new(timings: timings).tap do |report|
+      report.build_entry = timings.entry_at(document[:build_phase])
+      report.build = Dash::Build::Report.from_h(document[:build]) if document[:build]
+      report.advice = Array(document[:advice]).map { |finding| Dash::Dockerfile::Finding.from_h(finding) }
+    end
+  end
 
   def initialize(timings:)
     @timings = timings
     @advice = []
+  end
+
+  # The run's own facts (command, service, destination, version, timings of the whole
+  # thing) belong to the caller that knows them; the report contributes what it measured.
+  # `build_phase` is the row the build rows hang under, by position, so a reader can put
+  # them back without matching on a phase name dash is free to reword.
+  def to_h(**run)
+    {
+      schema: SCHEMA, dash_version: Dash::VERSION, **run,
+      phases: timings.to_h, build_phase: build_entry && timings.index_of(build_entry),
+      build: build&.to_h, advice: advice.map(&:to_h)
+    }.compact
   end
 
   def lines

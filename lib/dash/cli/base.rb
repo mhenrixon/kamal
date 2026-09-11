@@ -1,4 +1,5 @@
 require "thor"
+require "time"
 require "dash/sshkit_with_ext"
 
 module Dash::Cli
@@ -148,11 +149,83 @@ module Dash::Cli
         record_startup_timing if @print_runtime_depth == 1
         yield
         Time.now - started_at
+      rescue StandardError => e
+        # Kept so the saved report says how the run ended. `setup` nests, and the inner
+        # deploy sets it first — the outermost writer reads the same error either way.
+        @report_error = e
+        raise
       ensure
         @print_runtime_depth -= 1
         runtime = Time.now - started_at
         puts "  Finished all in #{sprintf("%.1f seconds", runtime)}"
-        puts DASH.report.lines if @print_runtime_depth.zero? && DASH.timings.any?
+        finish_report(started_at, runtime) if @print_runtime_depth.zero? && DASH.timings.any?
+      end
+
+      # Trends, then the table, then the saved JSON. Each half is guarded on its own so a
+      # report that cannot be written still prints, and a table that cannot be compared is
+      # still a table — none of this is allowed to be why a deploy ends badly.
+      def finish_report(started_at, runtime)
+        run = nil
+
+        guarded_report do
+          run = report_run(started_at, runtime)
+          DASH.report.advice += report_trends(run)
+        end
+
+        puts DASH.report.lines
+
+        guarded_report { write_report(run) } if run
+      end
+
+      # What this invocation was, for the saved report and for the trend rules that
+      # compare it with the invocations before it.
+      def report_run(started_at, runtime)
+        {
+          command: [ command, subcommand ].compact.join(" "),
+          service: DASH.config.service, destination: DASH.config.destination, version: DASH.config.version,
+          started_at: started_at.getutc.iso8601, runtime: runtime.round(1),
+          status: @report_error ? "failed" : "succeeded",
+          error: @report_error && { class: @report_error.class.name, message: @report_error.message }
+        }.compact
+      end
+
+      def report_trends(run)
+        return [] unless DASH.config.report.advice?
+
+        history = Dash::Report::History.new(reports_directory, destination: DASH.config.destination)
+
+        Dash::Report::Trends.new(run.merge(phases: DASH.timings.to_h),
+          history: history.recent(DASH.config.report.history), ignore: DASH.config.report.ignore).findings
+      end
+
+      def write_report(run)
+        @report_path = Dash::Report::Writer.new(DASH.report,
+          run: run, keep: DASH.config.report.history, directory: reports_directory).write
+
+        puts "  Report written to #{@report_path}" if @report_path
+      end
+
+      def reports_directory
+        Dash::ProjectDirectory.join("reports")
+      end
+
+      # Summary numbers for the post-deploy hook, so a hook can page on a build that
+      # doubled or a warning that appeared without re-deriving any of it. Phases that did
+      # not run contribute nothing rather than a zero that reads as "instant".
+      def report_hook_details
+        guarded_report({}) do
+          {
+            build_runtime: phase_runtime(Dash::Report::Trends::BUILD_PHASE),
+            boot_runtime: phase_runtime(Dash::Report::Trends::BOOT_PHASE),
+            advice_count: DASH.report.advice.size.to_s,
+            advice_warnings: DASH.report.advice.count(&:warn?).to_s,
+            report_path: @report_path
+          }.compact
+        end
+      end
+
+      def phase_runtime(name)
+        DASH.timings.seconds_for(name)&.round(1)&.to_s
       end
 
       # Everything that happened before the first phase could be timed: requiring the gem,
@@ -170,11 +243,14 @@ module Dash::Cli
         guarded_report { DASH.report.analyze!(DASH.config) }
       end
 
-      def guarded_report
+      # `fallback` is what the caller gets when the report could not be produced, for the
+      # callers that need a value rather than a side effect.
+      def guarded_report(fallback = nil)
         yield
       rescue StandardError => e
         say "Deploy report unavailable: #{e.class}: #{e.message}", :yellow
         say e.backtrace.join("\n"), :yellow if ENV["VERBOSE"]
+        fallback
       end
 
       def timed(name, depth: 0, &block)

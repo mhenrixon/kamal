@@ -98,6 +98,21 @@ class Views::Docs::Pages::Hooks < DocsUI::Page
         | `DASH_LOCK` | `true` when the command holds the deploy lock |
         | `DASH_RUNTIME` | seconds elapsed, on `post-deploy` |
 
+        `post-deploy` also gets what the [deploy report](/docs/deploy-report)
+        measured, so a hook can page on a build that doubled without parsing
+        anything:
+
+        | Variable | Value |
+        |---|---|
+        | `DASH_BUILD_RUNTIME` | seconds the build phase took — absent when nothing was built |
+        | `DASH_BOOT_RUNTIME` | seconds the boot phase took — absent when nothing was booted |
+        | `DASH_ADVICE_COUNT` | how many pieces of advice the report printed |
+        | `DASH_ADVICE_WARNINGS` | how many of those were warnings rather than notes |
+        | `DASH_REPORT_PATH` | the JSON report this deploy saved, when `report: history:` is not `0` |
+
+        Under `dash setup` the hook fires from the `deploy` it wraps, before the
+        outer report is finalised, so `DASH_REPORT_PATH` is absent from that run.
+
         Hooks marked **Secrets** in the table also receive every entry of
         `.dash/secrets` as environment variables, so a `pre-deploy` hook can
         talk to the same services the deploy does.

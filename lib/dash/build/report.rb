@@ -7,6 +7,15 @@
 class Dash::Build::Report
   attr_reader :steps, :push_seconds
 
+  # Rebuilds a report from what #to_h exported. Only the steps and the push are restored:
+  # every other number in the export is derived from them, so recomputing keeps a
+  # hand-edited file from claiming a total its own steps do not add up to.
+  def self.from_h(hash)
+    hash = hash.transform_keys(&:to_sym)
+
+    new steps: Array(hash[:steps]).map { |step| Dash::Build::Step.from_h(step) }, push_seconds: hash[:push_seconds].to_f
+  end
+
   def initialize(steps: [], push_seconds: 0.0)
     @steps = steps
     @push_seconds = push_seconds

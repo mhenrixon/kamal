@@ -1140,6 +1140,114 @@ class CliMainTest < CliTestCase
     end
   end
 
+  test "a deploy saves what it measured and says where it went" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    output = run_command("deploy", "--skip_push")
+    document = saved_reports.sole
+
+    assert_match "  Report written to #{@reports_directory}/", output
+    assert_equal [ 1, "deploy", "app", "succeeded" ], document.values_at(:schema, :command, :service, :status)
+    assert_includes document[:phases].map { |phase| phase[:name] }, "Pull app image"
+  end
+
+  test "the saved report is named for the destination it deployed" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+
+    run_command("deploy", "--skip_push", "-d", "world", config_file: "deploy_for_dest")
+
+    assert_match(/\A\d{4}-\d{2}-\d{2}T[\d-]+Z-world-deploy\.json\z/, saved_report_names.sole)
+  end
+
+  test "history: 0 saves nothing and says nothing" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Configuration::Report.any_instance.stubs(:history).returns(0)
+
+    assert_no_match(/Report written to/, run_command("deploy", "--skip_push"))
+    assert_empty saved_reports
+  end
+
+  # The run an operator most wants to read afterwards is the one that went wrong.
+  test "a deploy that fails still saves what it measured, marked failed" do
+    Dash::Cli::Main.any_instance.stubs(:invoke).raises(RuntimeError, "boom")
+
+    assert_raises(RuntimeError) { run_command("deploy", "--skip_push") }
+
+    assert_equal "failed", saved_reports.sole[:status]
+    assert_equal({ class: "RuntimeError", message: "boom" }, saved_reports.sole[:error])
+  end
+
+  test "a deploy compares itself with the deploys before it" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    3.times { |i| save_report started_at: "2026-09-1#{i}T12:00:00Z", runtime: 1.0 }
+
+    assert_match(/\n    info  deploy history\s+dash overhead \d+\.\ds vs median 0\.0s over the last 3 deploys; Startup/,
+      run_command("deploy", "--skip_push"))
+  end
+
+  test "an ignored trend rule stays out of the advice block" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Configuration::Report.any_instance.stubs(:ignore).returns([ "trend-overhead" ])
+    3.times { |i| save_report started_at: "2026-09-1#{i}T12:00:00Z", runtime: 1.0 }
+
+    assert_no_match(/trend|deploy history/, run_command("deploy", "--skip_push"))
+  end
+
+  test "the trend findings are saved alongside the advice they were printed with" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    3.times { |i| save_report started_at: "2026-09-1#{i}T12:00:00Z", runtime: 1.0 }
+
+    run_command("deploy", "--skip_push")
+
+    saved = saved_reports.find { |report| report[:phases].any? }
+
+    assert_includes saved[:advice].map { |finding| finding[:rule] }, "trend-overhead"
+  end
+
+  # History that cannot be read is history a deploy shrugs at: the directory belongs to
+  # the operator and a half-written report is not their deploy's problem.
+  test "an unreadable history costs the deploy nothing" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    FileUtils.mkdir_p @reports_directory
+    File.write File.join(@reports_directory, "half-written.json"), "{"
+
+    assert_match "Finished all in", run_command("deploy", "--skip_push")
+  end
+
+  test "a report that cannot be written costs one yellow line and no more" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Report::Writer.any_instance.stubs(:write).raises(Errno::EACCES, "reports")
+
+    run_command("deploy", "--skip_push").tap do |output|
+      assert_match "Deploy report unavailable: Errno::EACCES", output
+      assert_match "Finished all in", output
+    end
+  end
+
+  test "the post-deploy hook is handed the report's summary numbers" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
+
+    env = post_deploy_hook_env { run_command("deploy", config_file: "deploy_with_report_advice") }
+
+    assert_match(/\A\d+\.\d\z/, env["DASH_BUILD_RUNTIME"])
+    assert_equal env["DASH_BUILD_RUNTIME"], env["KAMAL_BUILD_RUNTIME"]
+    assert_match(/\A\d+\z/, env["DASH_ADVICE_COUNT"])
+    assert_operator env["DASH_ADVICE_WARNINGS"].to_i, :>, 0
+    assert_match(/\.json\z/, env["DASH_REPORT_PATH"])
+  end
+
+  test "a phase that never ran contributes no hook variable" do
+    Dash::Cli::Main.any_instance.stubs(:invoke)
+    Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
+
+    env = post_deploy_hook_env { run_command("deploy", "--skip_push") }
+
+    assert_not env.key?("DASH_BUILD_RUNTIME")
+    assert_not env.key?("KAMAL_BUILD_RUNTIME")
+    assert_equal "0", env["DASH_ADVICE_COUNT"]
+  end
+
   # The deploy report is only worth having if it is free. Every command a deploy issues is
   # pinned here, so a measurement that quietly costs an extra SSH round trip cannot land
   # unnoticed — and a deliberate reduction has to be explained in the same commit that
@@ -1163,6 +1271,34 @@ class CliMainTest < CliTestCase
   end
 
   private
+    def saved_reports
+      saved_report_names.map { |name| JSON.parse(File.read(File.join(@reports_directory, name)), symbolize_names: true) }
+    end
+
+    def saved_report_names
+      Dir.children(@reports_directory).grep(/\.json\z/).sort
+    rescue Errno::ENOENT
+      []
+    end
+
+    def save_report(started_at:, runtime:, destination: nil, command: "deploy")
+      FileUtils.mkdir_p @reports_directory
+      File.write File.join(@reports_directory, "#{started_at.tr(":", "-")}-#{destination || "default"}-#{command}.json"),
+        JSON.generate(schema: Dash::Report::SCHEMA, command: command, destination: destination, status: "succeeded",
+          started_at: started_at, runtime: runtime, phases: [], advice: [])
+    end
+
+    # Hooks are handed their variables through the process environment, which the Printer
+    # backend never echoes. Catch them on the way in instead.
+    def post_deploy_hook_env
+      envs = []
+      Dash::Cli::Base.any_instance.stubs(:with_env).with { |env| envs << env; true }.yields
+
+      yield
+
+      envs.find { |env| env.key?("DASH_RUNTIME") } || {}
+    end
+
     # The one step from the fixture Dockerfile's only stage that the measured half of
     # copy-before-install looks for.
     def measured_bundle_install

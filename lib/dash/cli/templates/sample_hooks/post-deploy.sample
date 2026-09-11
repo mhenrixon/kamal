@@ -10,5 +10,10 @@
 # DASH_ROLES (if set)
 # DASH_DESTINATION (if set)
 # DASH_RUNTIME
+# DASH_BUILD_RUNTIME (if the deploy built an image)
+# DASH_BOOT_RUNTIME (if the deploy booted containers)
+# DASH_ADVICE_COUNT
+# DASH_ADVICE_WARNINGS
+# DASH_REPORT_PATH (unless report/history is 0)
 
 echo "$DASH_PERFORMER deployed $DASH_VERSION to $DASH_DESTINATION in $DASH_RUNTIME seconds"

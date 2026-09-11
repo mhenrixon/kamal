@@ -131,10 +131,11 @@ class Dash::OtelShipper
 
     def typed_value(v)
       case v
-      when Integer then { intValue: v }
-      when Float   then { doubleValue: v }
-      when Array   then { arrayValue: { values: v.map { |e| typed_value(e) } } }
-      else              { stringValue: v.to_s }
+      when true, false then { boolValue: v }
+      when Integer     then { intValue: v }
+      when Float       then { doubleValue: v }
+      when Array       then { arrayValue: { values: v.map { |e| typed_value(e) } } }
+      else                  { stringValue: v.to_s }
       end
     end
 
