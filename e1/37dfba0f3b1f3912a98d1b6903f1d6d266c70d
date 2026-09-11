@@ -1,0 +1,19 @@
+test/cli/cli_test_case.rb
+  s_f29538439be721::t_e888a48d13674a 38-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e137dfba0f3b1f3912a98d1b6903f1d6d266c70d",
+  "prompts": {},
+  "sessions": {
+    "s_f29538439be721": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a1115d9e-256b-445a-8eda-82fb9eb0396a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
