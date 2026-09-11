@@ -357,23 +357,21 @@ class CliBuildTest < CliTestCase
   test "pull" do
     run_command("pull").tap do |output|
       assert_match /docker info --format '{{index .RegistryConfig.Mirrors 0}}'/, output
-      assert_match %r{Pulled image with version 999" >> \.dash/app-audit\.log && docker image rm --force dhh/app:999 \|\| true && docker pull dhh/app:999}, output
+      assert_match %r{Pulled image with version 999" >> \.dash/app-audit\.log && \( docker image rm --force dhh/app:999 \|\| true \) && docker pull dhh/app:999}, output
       assert_match "docker inspect -f '{{ .Config.Labels.service }}' dhh/app:999 | grep -x app || (echo \"Image dhh/app:999 is missing the 'service' label\" && exit 1)", output
     end
   end
 
   test "pull issues two commands per host" do
-    commands = []
-    SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
-
-    run_command("pull")
+    commands = recorded_commands { run_command("pull") }
 
     pulls = commands.select { |command| command.include?("docker pull dhh/app:999") }
     assert_equal DASH.app_hosts.size, pulls.size
     assert pulls.all? { |command| command.include?("app-audit.log") && command.include?("docker image rm --force") }, pulls.inspect
 
-    per_host = commands.count { |command| command.include?("dhh/app:999") } / DASH.app_hosts.size
-    assert_equal 2, per_host
+    # An exact total, not a rounded average: integer division would swallow one extra
+    # command on a single host.
+    assert_equal 2 * DASH.app_hosts.size, commands.count { |command| command.include?("dhh/app:999") }
   end
 
   test "pull with mirror" do

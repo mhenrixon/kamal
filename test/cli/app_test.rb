@@ -60,16 +60,25 @@ class CliAppTest < CliTestCase
     Thread.report_on_exception = true
   end
 
+  # Counted at the capture layer, not the Printer: both reads are captures, and a stubbed
+  # capture never reaches execute_command - so counting printed commands would pass
+  # whether or not the two were folded.
   test "boot reads the clash check and the running version in a single round trip" do
-    stub_running
+    Object.any_instance.stubs(:sleep)
 
-    commands = []
-    SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
+    captures = []
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
+      .with { |*args| captures << args.join(" "); true }
+      .returns("\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n123")
 
     run_command("boot")
 
-    assert_equal 0, commands.count { |command| command.include?("docker ps --latest") },
-      "current_running_version should no longer be a round trip of its own"
+    boot_state = captures.select { |capture| capture.include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+    assert_equal 1, boot_state.size, captures.inspect
+    assert_match "docker ps --latest", boot_state.first
+
+    assert_equal 0, captures.count { |capture| capture.include?("docker ps --latest") && !capture.include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) },
+      "current_running_version should no longer be a capture of its own"
   end
 
   # An audit line is a write to a file the action it describes is about to change. Folding

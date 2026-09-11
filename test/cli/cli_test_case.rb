@@ -27,6 +27,19 @@ class CliTestCase < ActiveSupport::TestCase
   end
 
   private
+    # Every command the Printer backend was handed during the block, in order. Only what a
+    # caller `execute`s arrives here - a capture whose `capture_with_info` is stubbed is
+    # intercepted above this layer and never shows up, so a round-trip count that has to
+    # see captures must count those instead.
+    def recorded_commands
+      commands = []
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
+
+      yield
+
+      commands
+    end
+
     # A real `docker buildx build --progress=plain` stream, parsed by the same handler a
     # build attaches. Cheaper than a Docker daemon and it proves the wiring end to end.
     def build_report_from_fixture(name = "progress_plain_success")

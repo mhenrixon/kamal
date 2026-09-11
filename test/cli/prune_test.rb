@@ -68,13 +68,6 @@ class CliPruneTest < CliTestCase
   end
 
   private
-    def recorded_commands
-      commands = []
-      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
-      yield
-      commands
-    end
-
     def run_command(*command, config_file: "test/fixtures/deploy_with_accessories.yml")
       stdouted { Dash::Cli::Prune.start([ *command, "-c", config_file ]) }
     end

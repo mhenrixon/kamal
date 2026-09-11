@@ -1262,7 +1262,7 @@ class CliMainTest < CliTestCase
   test "deploy issues no commands beyond the pinned sequence" do
     Dash::Cli::Main.any_instance.stubs(:invoke)
 
-    assert_equal DEPLOY_COMMAND_SEQUENCE, recorded_commands { run_command("deploy", "--skip_push") }
+    assert_equal DEPLOY_COMMAND_SEQUENCE, recorded_deploy_commands { run_command("deploy", "--skip_push") }
   end
 
   private
@@ -1306,13 +1306,8 @@ class CliMainTest < CliTestCase
 
     # The lock details are a base64 blob of the operator, the time and the version, so
     # they differ on every run and every machine. The command around them is the point.
-    def recorded_commands
-      commands = []
-      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
-
-      yield
-
-      commands.map { |command| command.gsub(/echo "[^"]*"/m, %(echo "<details>")) }
+    def recorded_deploy_commands(&block)
+      recorded_commands(&block).map { |command| command.gsub(/echo "[^"]*"/m, %(echo "<details>")) }
     end
 
     def run_command(*command, config_file: "deploy_simple")
