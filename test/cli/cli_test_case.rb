@@ -35,7 +35,14 @@ class CliTestCase < ActiveSupport::TestCase
       commands = []
       SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
 
-      yield
+      begin
+        yield
+      ensure
+        # The stub swallows the command instead of printing it, and mocha would leave it
+        # standing until the end of the test - so anything run after the block would be
+        # silently invisible. Recording stops where the block does.
+        SSHKit::Backend::Printer.any_instance.unstub(:execute_command)
+      end
 
       commands
     end
