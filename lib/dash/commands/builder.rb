@@ -2,7 +2,7 @@ require "active_support/core_ext/string/filters"
 
 class Dash::Commands::Builder < Dash::Commands::Base
   delegate \
-    :create, :remove, :dev, :push, :clean, :pull, :info, :inspect_builder,
+    :create, :remove, :dev, :push, :clean, :pull, :clean_then_pull, :info, :inspect_builder,
     :validate_image, :first_mirror, :login_to_registry_locally?, :push_env,
     to: :target
 

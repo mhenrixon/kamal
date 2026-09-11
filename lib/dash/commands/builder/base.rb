@@ -14,6 +14,12 @@ class Dash::Commands::Builder::Base < Dash::Commands::Base
     docker :image, :rm, "--force", config.absolute_image
   end
 
+  # Dropping the old image is housekeeping - a host that never had it is not an error -
+  # so it must not short-circuit whatever it shares a round trip with.
+  def clean_then_pull
+    combine any(clean, [ :true ]), pull
+  end
+
   def push(export_action = "registry", tag_as_dirty: false, no_cache: false)
     docker :buildx, :build,
       "--output=type=#{export_action}",

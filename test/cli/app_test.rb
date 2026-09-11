@@ -19,13 +19,7 @@ class CliAppTest < CliTestCase
     Object.any_instance.stubs(:sleep)
     run_command("details") # Preheat Kamal const
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet", raise_on_non_zero_exit: false)
-      .returns("12345678") # running version
-
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("123") # old version
+    stub_boot_state clash: "12345678", running: "123"
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
@@ -39,6 +33,54 @@ class CliAppTest < CliTestCase
     end
   ensure
     Thread.report_on_exception = true
+  end
+
+  # The clash check and the running-version read share one round trip, so the running
+  # version is now read BEFORE the clashing container is renamed. When they are the same
+  # container, the old version to stop is the name it was renamed to - stopping the name
+  # that was read would stop the container this boot just started.
+  test "boot stops the renamed container when the version being deployed was the running one" do
+    Object.any_instance.stubs(:sleep)
+    run_command("details") # Preheat Kamal const
+
+    stub_boot_state clash: "12345678", running: "latest"
+
+    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
+      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
+      .returns("12345678")
+
+    run_command("boot").tap do |output|
+      renamed = output[/docker rename app-web-latest (app-web-latest_replaced_[0-9a-f]{16})/, 1]
+      assert renamed, output
+
+      assert_match "docker container ls --all --filter 'name=^#{renamed}$' --quiet | xargs docker stop", output
+      assert_no_match(/'name=\^app-web-latest\$' --quiet \| xargs docker stop/, output)
+    end
+  ensure
+    Thread.report_on_exception = true
+  end
+
+  test "boot reads the clash check and the running version in a single round trip" do
+    stub_running
+
+    commands = []
+    SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| commands << cmd.to_command; true }
+
+    run_command("boot")
+
+    assert_equal 0, commands.count { |command| command.include?("docker ps --latest") },
+      "current_running_version should no longer be a round trip of its own"
+  end
+
+  # An audit line is a write to a file the action it describes is about to change. Folding
+  # it into the same shell string keeps "audit before action" and halves the round trips.
+  test "boot records the audit line in the same round trip as the action" do
+    stub_running
+
+    run_command("boot").tap do |output|
+      assert_match %r{\[web\] Booted app version latest" >> \.dash/app-audit\.log && mkdir -p \.dash/apps/app/env/roles}, output
+      assert_match %r{Tagging dhh/app:latest as the latest image" >> \.dash/app-audit\.log && docker tag dhh/app:latest dhh/app:latest}, output
+    end
   end
 
   test "boot uses group strategy when specified" do
@@ -161,7 +203,8 @@ class CliAppTest < CliTestCase
   test "a canary opens the barrier for the roles booting after it" do
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -216,13 +259,13 @@ class CliAppTest < CliTestCase
 
   test "boot with assets" do
     Object.any_instance.stubs(:sleep)
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet", raise_on_non_zero_exit: false)
-      .returns("12345678") # running version
 
+    # The assets step reads the running version on its own, before the boot does.
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("123").twice # old version
+      .returns("123") # old version
+
+    stub_boot_state clash: "12345678", running: "123"
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
@@ -241,17 +284,11 @@ class CliAppTest < CliTestCase
   test "boot with host tags" do
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet", raise_on_non_zero_exit: false)
-      .returns("12345678") # running version
+    stub_boot_state clash: "12345678", running: "123"
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
       .returns("12345678") # running version
-
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("123") # old version
 
     run_command("boot", config: :with_env_tags).tap do |output|
       assert_match "docker tag dhh/app:latest dhh/app:latest", output
@@ -263,7 +300,8 @@ class CliAppTest < CliTestCase
   test "boot with web barrier opened" do
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -282,7 +320,8 @@ class CliAppTest < CliTestCase
     # guarantees the primary role goes first, and it has to survive that flip.
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -301,7 +340,8 @@ class CliAppTest < CliTestCase
 
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet", "|", "xargs docker logs --timestamps 2>&1")
@@ -336,7 +376,8 @@ class CliAppTest < CliTestCase
 
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -359,7 +400,8 @@ class CliAppTest < CliTestCase
 
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -377,7 +419,8 @@ class CliAppTest < CliTestCase
 
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -407,7 +450,8 @@ class CliAppTest < CliTestCase
 
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -433,7 +477,8 @@ class CliAppTest < CliTestCase
   test "boot with only workers" do
     Object.any_instance.stubs(:sleep)
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
@@ -777,7 +822,8 @@ class CliAppTest < CliTestCase
   end
 
   test "boot proxy" do
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy).tap do |output|
       assert_match /Renaming container .* to .* as already deployed on 1.1.1.1/, output # Rename
@@ -790,7 +836,8 @@ class CliAppTest < CliTestCase
   end
 
   test "boot proxy with role specific config" do
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy_roles, host: nil).tap do |output|
       assert_match "docker exec dash-proxy dash-proxy deploy app-web --target=\"123:80\" --deploy-timeout=\"6s\" --drain-timeout=\"30s\" --target-timeout=\"10s\" --buffer-requests --buffer-responses --log-request-header=\"Cache-Control\" --log-request-header=\"Last-Modified\" --log-request-header=\"User-Agent\"", output
@@ -800,7 +847,8 @@ class CliAppTest < CliTestCase
 
   test "boot runs proxy deploy hooks around the proxy deploy" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy).tap do |output|
       assert_hook_ran "pre-proxy-deploy", output
@@ -814,7 +862,8 @@ class CliAppTest < CliTestCase
     Dash::Cli::App.any_instance.expects(:run_hook).with("pre-proxy-deploy", hosts: "1.1.1.1", role: "web")
     Dash::Cli::App.any_instance.expects(:run_hook).with("post-proxy-deploy", hosts: "1.1.1.1", role: "web")
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy)
   end
@@ -822,7 +871,8 @@ class CliAppTest < CliTestCase
   test "boot skips proxy deploy hooks for roles not running the proxy" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
     Dash::Cli::Healthcheck::Poller.stubs(:wait_for_healthy)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy, host: "1.1.1.3").tap do |output|
       assert_hook_ran "pre-app-boot", output
@@ -833,7 +883,8 @@ class CliAppTest < CliTestCase
 
   test "boot skips proxy deploy hooks with --skip-hooks" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", "--skip-hooks", config: :with_proxy).tap do |output|
       assert_match /dash-proxy deploy app-web/, output
@@ -844,7 +895,8 @@ class CliAppTest < CliTestCase
 
   test "boot aborts when the pre-proxy-deploy hook fails" do
     fail_hook("pre-proxy-deploy")
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     stderred { run_command("boot", config: :with_proxy, allow_execute_error: true) }
 
@@ -876,7 +928,8 @@ class CliAppTest < CliTestCase
   test "boot runs app stop hooks for a non-proxied role" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
     Dash::Cli::Healthcheck::Poller.stubs(:wait_for_healthy)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy, host: "1.1.1.3").tap do |output|
       assert_no_match /hooks\/pre-proxy-deploy/, output
@@ -886,7 +939,8 @@ class CliAppTest < CliTestCase
 
   test "boot runs app stop hooks for proxied roles too" do
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     run_command("boot", config: :with_proxy).tap do |output|
       assert_match /dash-proxy deploy app-web.*pre-app-stop/m, output
@@ -920,7 +974,8 @@ class CliAppTest < CliTestCase
   test "boot continues the deploy when the pre-app-stop hook fails" do
     fail_hook("pre-app-stop")
     Object.any_instance.stubs(:sleep)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     stderred { run_command("boot") }
 
@@ -940,7 +995,8 @@ class CliAppTest < CliTestCase
 
   test "boot leaves the old container running when the exec probe never passes" do
     Dash::Configuration.any_instance.stubs(:deploy_timeout).returns(0)
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+    stub_boot_state clash: "12345678", running: "123", expect: false
 
     @executions = []
     SSHKit::Backend::Abstract.any_instance.stubs(:execute)
@@ -1068,6 +1124,18 @@ class CliAppTest < CliTestCase
     def stub_running
       Object.any_instance.stubs(:sleep)
 
-      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # old version
+      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
+      stub_boot_state clash: nil, running: "123", expect: false
+    end
+
+    # The one capture Dash::Cli::App::Boot makes before it starts anything: the id of a
+    # container already holding this version, then the version running now.
+    def stub_boot_state(clash:, running:, expect: true)
+      backend = SSHKit::Backend::Abstract.any_instance
+      matcher = ->(*args) { args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+
+      (expect ? backend.expects(:capture_with_info) : backend.stubs(:capture_with_info))
+        .with(&matcher)
+        .returns("#{clash}\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n#{running}")
     end
 end

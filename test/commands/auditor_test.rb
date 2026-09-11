@@ -25,6 +25,21 @@ class CommandsAuditorTest < ActiveSupport::TestCase
     ], @auditor.record("app removed container")
   end
 
+  test "record_then puts the audit line and the action it describes in one command" do
+    assert_equal [
+      *ENSURE_RUN_DIRECTORY, "&&",
+      :echo,
+      "\"[#{@recorded_at}] [#{@performer}] Pruned images\"",
+      ">>", ".dash/app-audit.log", "&&",
+      :docker, :image, :prune, "&&",
+      :docker, :image, :ls
+    ], @auditor.record_then("Pruned images", [ :docker, :image, :prune ], [ :docker, :image, :ls ])
+  end
+
+  test "record_then with no action is just the audit line" do
+    assert_equal @auditor.record("Pruned containers"), @auditor.record_then("Pruned containers")
+  end
+
   test "record with destination" do
     new_command(destination: "staging").tap do |auditor|
       assert_equal [

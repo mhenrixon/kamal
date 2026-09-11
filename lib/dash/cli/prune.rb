@@ -11,9 +11,7 @@ class Dash::Cli::Prune < Dash::Cli::Base
   def images
     modify(lock: true, server_lock: true) do
       on(DASH.hosts) do
-        execute *DASH.auditor.record("Pruned images"), verbosity: :debug
-        execute *DASH.prune.dangling_images
-        execute *DASH.prune.tagged_images
+        execute *DASH.auditor.record_then("Pruned images", DASH.prune.dangling_images, DASH.prune.tagged_images)
       end
     end
   end
@@ -26,11 +24,10 @@ class Dash::Cli::Prune < Dash::Cli::Base
 
     modify(lock: true, server_lock: true) do
       on(DASH.hosts) do |host|
-        execute *DASH.auditor.record("Pruned containers"), verbosity: :debug
-
-        DASH.roles_on(host).each do |role|
-          execute *DASH.prune.app_containers(retain: retain, role: role)
-        end
+        # One round trip per host, whatever it runs: a host with no app roles still
+        # records that the sweep reached it.
+        execute *DASH.auditor.record_then("Pruned containers",
+          *DASH.roles_on(host).map { |role| DASH.prune.app_containers(retain: retain, role: role) })
       end
     end
   end

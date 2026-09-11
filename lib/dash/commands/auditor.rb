@@ -14,6 +14,16 @@ class Dash::Commands::Auditor < Dash::Commands::Base
       append([ :echo, escape_shell_value(audit_line(line, **details)) ], audit_log_file)
   end
 
+  # The audit line and the action it describes in one round trip, still in that order:
+  # the log is written first, and `&&` means a failed write aborts the action exactly as
+  # a failed standalone audit would have.
+  #
+  # Only ever fold in commands the caller would `execute`. A `capture` folded in here
+  # would come back with nothing to distinguish the audit's own output from the answer.
+  def record_then(line, *commands, **details)
+    combine record(line, **details), *commands
+  end
+
   def reveal
     [ :tail, "-n", 50, audit_log_file ]
   end

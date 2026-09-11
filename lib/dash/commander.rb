@@ -7,6 +7,12 @@ require "active_support/notifications"
 class Dash::Commander
   attr_accessor :verbosity, :holding_lock, :holding_server_lock, :connected, :logging, :lock_wait, :lock_wait_timeout, :lock_wait_interval
   attr_reader :specific_roles, :specific_hosts, :timings, :report
+
+  # Hosts whose run directory this process has already swept, so the second lock acquire
+  # of a command does not re-run the migration everywhere. Per host rather than a flag:
+  # `dash upgrade` narrows the host set between acquires, and a host that was never in
+  # scope has never been swept.
+  attr_reader :run_directory_ensured_on
   delegate :hosts, :roles, :primary_host, :primary_role, :roles_on, :app_hosts, :proxy_hosts, :accessory_hosts, to: :specifics
 
   def initialize
@@ -29,6 +35,7 @@ class Dash::Commander
     @config = @config_kwargs = nil
     @output_logger = nil
     @commands = {}
+    @run_directory_ensured_on = []
   end
 
   def config
