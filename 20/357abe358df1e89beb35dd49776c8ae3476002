@@ -1,0 +1,28 @@
+lib/dash/cli/proxy.rb
+  s_a07a24960db1c1::t_3db0a69f93b4ed 417-422
+test/cli/proxy_test.rb
+  s_a07a24960db1c1::t_d24eb8682abad2 81-108,167-189
+  s_a07a24960db1c1::t_58fb7d81fa6d66 1110-1125
+lib/dash/cli/proxy/reboot.rb
+  s_a07a24960db1c1::t_6bcd4eb44fce7c 40-45
+lib/dash/cli/proxy/loadbalancer_reboot.rb
+  s_a07a24960db1c1::t_6bcd4eb44fce7c 24-31
+lib/dash/commands/loadbalancer.rb
+  s_a07a24960db1c1::t_d3c76f62097514 202-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "20357abe358df1e89beb35dd49776c8ae3476002",
+  "prompts": {},
+  "sessions": {
+    "s_a07a24960db1c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a0cd518e-5bcc-49fe-8a21-9a1e4765dbbc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
