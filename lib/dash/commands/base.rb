@@ -40,6 +40,18 @@ module Dash::Commands
       docker :container, :ls, *("--all" unless only_running), "--filter", "'name=^#{container_name}$'", "--quiet"
     end
 
+    # True only when `list_command`'s own output is confirmed empty - never inferred from
+    # a failure. `docker container inspect name > /dev/null 2>&1` (negated) cannot tell
+    # "no such container" from "the daemon could not be asked" - both exit non-zero - so a
+    # transient failure there reads as confirmed absence. A `list` exits 0 whichever way
+    # the match went and non-zero only on a genuine failure, so `result=$(list) && [ -z
+    # "$result" ]` fails closed: `result=$(list)` carries list's own exit status (POSIX;
+    # verified against sh and bash), so a failed list stops the chain before the test runs.
+    # `list_command` must be a listing (docker container/volume ls), never an inspect.
+    def confirmed_empty?(list_command)
+      [ "result=$(#{list_command.join(" ")})", "&&", "[", "-z", "\"$result\"", "]" ]
+    end
+
     def make_directory_for(remote_file)
       make_directory Pathname.new(remote_file).dirname.to_s
     end
@@ -114,6 +126,13 @@ module Dash::Commands
         combine *commands, by: ";"
       end
 
+      # One subshell around an && chain. Composing two builders that each mix && and ||
+      # cannot be done flat - the operators share precedence and associate left, so the
+      # second builder's guards re-associate across the first one's.
+      def group(*commands)
+        [ "(", *combine(*commands), ")" ]
+      end
+
       def pipe(*commands)
         combine *commands, by: "|"
       end
@@ -150,11 +169,17 @@ module Dash::Commands
         any \
           volume_exists(volume),
           negate(volume_exists(legacy)),
-          [ "(", *combine(docker(:volume, :create, volume), copy_between_volumes(legacy, volume, image: image)), ")" ]
+          group(docker(:volume, :create, volume), copy_between_volumes(legacy, volume, image: image))
       end
 
       def negate(command)
         [ "!", *command ]
+      end
+
+      # The docker builders (network create, the stage-3c network bridge) for callers that
+      # compose them into a command of their own rather than executing them on their own.
+      def docker_commands
+        @docker_commands ||= Dash::Commands::Docker.new(config)
       end
 
       def volume_exists(name)

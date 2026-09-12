@@ -12,8 +12,13 @@ class Dash::Commands::Proxy < Dash::Commands::Base
   # Both the legacy constant and the fallback go away in stage 3d.
   LEGACY_CONFIG_DIGEST_LABEL = "org.kamal.proxy-config-digest"
 
-  CONFIG_DIGEST_FORMAT = "'{{ with index .Config.Labels \"#{CONFIG_DIGEST_LABEL}\" }}{{ . }}" \
-    "{{ else }}{{ index .Config.Labels \"#{LEGACY_CONFIG_DIGEST_LABEL}\" }}{{ end }}'"
+  CONFIG_DIGEST_TEMPLATE = "{{ with index .Config.Labels \"#{CONFIG_DIGEST_LABEL}\" }}{{ . }}" \
+    "{{ else }}{{ index .Config.Labels \"#{LEGACY_CONFIG_DIGEST_LABEL}\" }}{{ end }}"
+
+  CONFIG_DIGEST_FORMAT = "'#{CONFIG_DIGEST_TEMPLATE}'"
+
+  # Everything Dash::Cli::Proxy::Drift and the minimum-version gate need, in one format.
+  STATE_FORMAT = "'{{.Id}} {{.Config.Image}} #{CONFIG_DIGEST_TEMPLATE}'"
 
   def initialize(config, host:)
     super(config)
@@ -41,6 +46,41 @@ class Dash::Commands::Proxy < Dash::Commands::Base
   # Stage 3c migrations. All three are idempotent and guarded on the
   # destination not existing, so a second deploy is a no-op. Stage 3d deletes
   # them along with the legacy constants they read.
+
+  # Everything a proxy host needs before anything reads its container, volume or
+  # network, in the one round trip it already pays for the apps-config directory.
+  #
+  # `a || b && c` is `(a || b) && c`, so the mkdir runs whichever way the guard went -
+  # and the guard has to be the first word rather than a parenthesised group, because
+  # SSHKit prefixes the first word with /usr/bin/env and passes only `test` through.
+  # Stage 3d drops the legacy_rename half and leaves the mkdir.
+  def prepare_boot
+    combine legacy_rename, ensure_apps_config_directory
+  end
+
+  # The whole stage-3c bridge as one command, skipped outright by a host that has
+  # already been through it - or was installed fresh on 4.x and never had a kamal-proxy.
+  # The three steps keep their own bodies and their documented order (see
+  # Dash::Cli::Proxy::LegacyRename); each is wrapped in its own subshell because they
+  # all mix && and || at one precedence level, and composing them flat would
+  # re-associate across the volume copy's guard - the chain 4.0.0 got wrong.
+  #
+  # The marker is written on verified absence of both legacy containers, never on the
+  # chain's exit status: the two removals end in `|| true`, so a host whose stop failed
+  # would otherwise record itself as migrated and never retry. Its own `|| true` keeps
+  # that failure as quiet as it is today, while a failed volume copy still exits
+  # non-zero through the && chain and aborts the boot exactly as it does now.
+  def legacy_rename
+    any \
+      [ :test, "-f", legacy_rename_marker ],
+      group(
+        group(docker_commands.connect_legacy_network_containers),
+        group(copy_legacy_config_volume),
+        group(remove_legacy_container(timeout: config.drain_timeout)),
+        group(remove_legacy_holder_container),
+        group(any(mark_legacy_renamed, [ :true ]))
+      )
+  end
 
   # Copies the pre-rename config volume into the new one, before anything
   # starts. The volume holds the routing table and the ACME account and
@@ -114,6 +154,13 @@ class Dash::Commands::Proxy < Dash::Commands::Base
 
   def config_digest
     docker :inspect, container_name, "--format", CONFIG_DIGEST_FORMAT
+  end
+
+  # One read for container id, image tag and config digest - parsed by
+  # Dash::Commands::Proxy::State. Capture it with raise_on_non_zero_exit: false;
+  # a host with no proxy container inspects to nothing, which is an answer.
+  def inspect_state
+    docker :inspect, container_name, "--format", STATE_FORMAT
   end
 
   def container_id(only_running: false)
@@ -325,6 +372,21 @@ class Dash::Commands::Proxy < Dash::Commands::Base
 
     def container_exists(name)
       docker :container, :inspect, name, ">", "/dev/null", "2>&1"
+    end
+
+    # Stage 3c. 3d deletes both of these with the rest of the bridge.
+    def legacy_rename_marker
+      File.join config.proxy_boot.host_directory, Dash::Configuration::Proxy::LEGACY_RENAME_MARKER
+    end
+
+    # confirmed_empty?, not a negated inspect: a docker error while checking must never
+    # read as "confirmed gone" (zoolutions/dash#167 review).
+    def mark_legacy_renamed
+      combine \
+        confirmed_empty?(container_id_for(container_name: Dash::Configuration::Proxy::LEGACY_CONTAINER_NAME)),
+        confirmed_empty?(container_id_for(container_name: Dash::Configuration::Proxy::LEGACY_HOLDER_CONTAINER_NAME)),
+        make_directory(config.proxy_boot.host_directory),
+        [ :touch, legacy_rename_marker ]
     end
 
     # The image the volume copy borrows. The proxy this gem is pinned to is

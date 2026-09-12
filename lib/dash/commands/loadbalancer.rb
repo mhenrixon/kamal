@@ -47,6 +47,28 @@ class Dash::Commands::Loadbalancer < Dash::Commands::Base
     copy_legacy_volume(legacy: legacy_config_volume_name, volume: config_volume_name, image: loadbalancer_config.run.image)
   end
 
+  # Everything this host needs before anything reads its container, volume or network,
+  # in the one round trip it already pays for the apps-config directory. Same shape as
+  # Dash::Commands::Proxy#prepare_boot, including why the guard has to be the first word.
+  def prepare_boot
+    combine legacy_rename, ensure_apps_config_directory
+  end
+
+  # The loadbalancer's half of the stage-3c bridge - network, then volume - skipped
+  # outright by a host that has already been through it. No legacy container is replaced
+  # here (a dedicated loadbalancer host never ran one under a name this gem knows), so
+  # the marker is verified on the volume instead: the new one exists, or there was never
+  # a legacy one to adopt. Stage 3d deletes this with the rest of the bridge.
+  def legacy_rename
+    any \
+      [ :test, "-f", legacy_rename_marker ],
+      group(
+        group(docker_commands.connect_legacy_network_containers),
+        group(copy_legacy_config_volume),
+        group(any(mark_legacy_renamed, [ :true ]))
+      )
+  end
+
   def deploy(targets: [])
     docker :exec, container_name, "dash-proxy", "deploy", loadbalancer_config.config.service,
       *loadbalancer_config.deploy_command_args(targets: targets)
@@ -74,6 +96,12 @@ class Dash::Commands::Loadbalancer < Dash::Commands::Base
 
   def config_digest
     docker :inspect, container_name, "--format", Dash::Commands::Proxy::CONFIG_DIGEST_FORMAT
+  end
+
+  # One read for container id, image tag and config digest - parsed by
+  # Dash::Commands::Proxy::State, same as the per-host proxy's.
+  def inspect_state
+    docker :inspect, container_name, "--format", Dash::Commands::Proxy::STATE_FORMAT
   end
 
   def container_id(only_running: false)
@@ -163,6 +191,34 @@ class Dash::Commands::Loadbalancer < Dash::Commands::Base
   end
 
   private
+    # Stage 3c. 3d deletes both of these with the rest of the bridge.
+    def legacy_rename_marker
+      File.join loadbalancer_config.directory, Dash::Configuration::Proxy::LEGACY_RENAME_MARKER
+    end
+
+    # Verified on the volume existing, not on a container being gone - the loadbalancer
+    # replaces no legacy container, so this is the only signal its bridge has. That makes
+    # it foolable in one specific way: if `dash-loadbalancer-config` comes to exist before
+    # this bridge ever runs on a host - e.g. `dash proxy reboot` invoked directly against a
+    # dedicated LB host that has never been through `dash proxy boot`, since
+    # Dash::Cli::Proxy::LoadbalancerReboot#run boots the container without calling this
+    # bridge first - the marker is written despite the legacy volume's routing table and
+    # ACME cache never having been copied. That gap predates this fold: on `main`,
+    # `copy_legacy_config_volume`'s own guard (`volume_exists(new) || ...`) already skips
+    # the copy for good in that state, silently, every deploy - this only turns a
+    # per-deploy re-check into a cached one. Closing it means routing `reboot` through the
+    # same bridge, a `Dash::Cli::Proxy::LoadbalancerReboot` change, out of scope here
+    # (zoolutions/dash#160 is `boot`'s round trips) - tracked in zoolutions/dash#168.
+    # Recovery today is the same either way: copy the legacy volume's contents over by
+    # hand, then remove .legacy-renamed under this host's loadbalancer directory so this
+    # re-evaluates.
+    def mark_legacy_renamed
+      combine \
+        group(any(volume_exists(config_volume_name), negate(volume_exists(legacy_config_volume_name)))),
+        make_directory(loadbalancer_config.directory),
+        [ :touch, legacy_rename_marker ]
+    end
+
     def run_args
       loadbalancer_config.run_args
     end

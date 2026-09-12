@@ -335,6 +335,50 @@ class CommandsLoadbalancerTest < ActiveSupport::TestCase
     assert_match "--volume kamal-proxy-config:/from --volume dash-proxy-config:/to", command
   end
 
+  # --- Stage 3c: the bridge, folded into one guarded round trip (zoolutions/dash#160) ---
+
+  test "legacy_rename skips the bridge behind a marker in the loadbalancer directory" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert command.start_with?("test -f .dash/loadbalancer/.legacy-renamed || ( "), command
+    assert command.end_with?(")"), command
+  end
+
+  test "legacy_rename bridges the network before adopting the volume" do
+    command = new_command.legacy_rename.join(" ")
+
+    bridge = command.index("docker network inspect kamal > /dev/null 2>&1")
+    copy = command.index("docker volume inspect dash-loadbalancer-config > /dev/null 2>&1")
+
+    assert bridge, command
+    assert copy && bridge < copy, "the network bridge has to land before the volume copy: #{command}"
+  end
+
+  # The loadbalancer branch replaces no legacy container, so the volume is the only
+  # thing its bridge can verify: the new one exists, or there was never a legacy one.
+  test "legacy_rename writes the marker only once the volume is settled" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert_match "( ( docker volume inspect dash-loadbalancer-config > /dev/null 2>&1 " \
+      "|| ! docker volume inspect kamal-loadbalancer-config > /dev/null 2>&1 ) " \
+      "&& mkdir -p .dash/loadbalancer && touch .dash/loadbalancer/.legacy-renamed || true )", command
+  end
+
+  test "prepare_boot carries the apps-config directory in the bridge round trip" do
+    command = new_command.prepare_boot.join(" ")
+
+    assert command.start_with?("test -f .dash/loadbalancer/.legacy-renamed ||"), command
+    assert command.end_with?(") && mkdir -p .dash/proxy/apps-config"), command
+  end
+
+  test "inspect_state reads id, image and config digest in one format" do
+    assert_equal \
+      "docker inspect load-balancer --format '{{.Id}} {{.Config.Image}} " \
+      "{{ with index .Config.Labels \"org.dash.proxy-config-digest\" }}{{ . }}" \
+      "{{ else }}{{ index .Config.Labels \"org.kamal.proxy-config-digest\" }}{{ end }}'",
+      new_command.inspect_state.join(" ")
+  end
+
   test "remove_container prunes both the current and the legacy title" do
     assert_equal \
       "docker container prune --force --filter label=org.opencontainers.image.title=dash-loadbalancer && " \

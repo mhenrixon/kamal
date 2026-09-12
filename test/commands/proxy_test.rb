@@ -538,4 +538,122 @@ class CommandsProxyTest < ActiveSupport::TestCase
     assert_match "docker container rm --force kamal-proxy-net", command
     assert command.end_with?("|| true")
   end
+
+  # --- Stage 3c: the bridge, folded into one guarded round trip (zoolutions/dash#160) ---
+
+  test "legacy_rename skips the whole bridge behind a marker in the run directory" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert command.start_with?("test -f .dash/proxy/.legacy-renamed || ( "),
+      "a migrated host must decide with the marker, before any docker call: #{command}"
+    assert command.end_with?(")"), command
+  end
+
+  test "legacy_rename runs the three bridge steps in the documented order" do
+    command = new_command.legacy_rename.join(" ")
+
+    bridge = command.index("docker network inspect kamal > /dev/null 2>&1")
+    copy = command.index("docker volume inspect dash-proxy-config > /dev/null 2>&1")
+    replace = command.index("docker container inspect kamal-proxy > /dev/null 2>&1 && docker container stop")
+    holder = command.index("docker container inspect kamal-proxy-net")
+
+    assert bridge, command
+    assert copy && bridge < copy, "the network bridge has to land before the volume copy: #{command}"
+    assert replace && copy < replace, "the volume copy has to land before the container is replaced: #{command}"
+    assert holder && replace < holder, command
+  end
+
+  # Each builder already mixes && and || at one precedence level, so composing them
+  # flat would re-associate across their internals - and the volume copy's guard is
+  # exactly the chain 4.0.0 lost every host's routing table by getting wrong.
+  test "legacy_rename isolates every composed step in its own subshell" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert_match "( docker network inspect kamal > /dev/null 2>&1", command
+    assert_match "&& ( docker volume inspect dash-proxy-config", command
+    assert_match "&& ( docker container inspect kamal-proxy > /dev/null 2>&1", command
+    assert_match "&& ( docker container inspect kamal-proxy-net", command
+  end
+
+  # The two removals end in `|| true`, so the chain's exit status says nothing about
+  # whether the legacy container is actually gone. Ask docker instead.
+  test "legacy_rename writes the marker only once both legacy containers are gone" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert_match "( result=$(docker container ls --all --filter 'name=^kamal-proxy$' --quiet) && [ -z \"$result\" ] " \
+      "&& result=$(docker container ls --all --filter 'name=^kamal-proxy-net$' --quiet) && [ -z \"$result\" ] " \
+      "&& mkdir -p .dash/proxy && touch .dash/proxy/.legacy-renamed || true )", command
+  end
+
+  # A docker error while checking (daemon busy, permission denied) is not proof the
+  # container is gone - unlike a negated `inspect`, which cannot tell the two apart.
+  test "legacy_rename's marker check fails closed on a docker error, not just a miss" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert_match "result=$(docker container ls --all --filter 'name=^kamal-proxy$' --quiet) && [ -z \"$result\" ]", command
+    refute_match "! docker container inspect", command,
+      "a negated inspect can't tell \"not found\" from \"the daemon couldn't be asked\": #{command}"
+  end
+
+  # A failed volume copy must still abort the boot: it is the one step whose failure
+  # is not masked today, and recording it as migrated would strand the routing table.
+  test "legacy_rename leaves the volume copy free to fail the boot" do
+    copy = new_command.legacy_rename.join(" ")[/\( docker volume inspect dash-proxy-config.*?'cp -a \/from\/\. \/to\/' \) \)/m]
+
+    assert copy, new_command.legacy_rename.join(" ")
+    refute_match "|| true", copy, "a failed copy must fail the deploy, not vanish into || true"
+  end
+
+  # Step 3: the apps-config mkdir is a round trip the host pays anyway, and it reads
+  # nothing the bridge writes - so a migrated host pays zero round trips for the bridge.
+  test "prepare_boot carries the apps-config directory in the bridge round trip" do
+    command = new_command.prepare_boot.join(" ")
+
+    assert command.start_with?("test -f .dash/proxy/.legacy-renamed ||"), command
+    assert command.end_with?(") && mkdir -p .dash/proxy/apps-config"),
+      "`a || b && c` is `(a || b) && c`, so the mkdir runs either way: #{command}"
+  end
+
+  # One inspect for what used to be container_id, config_digest and version.
+  test "inspect_state reads id, image and config digest in one format" do
+    assert_equal \
+      "docker inspect dash-proxy --format '{{.Id}} {{.Config.Image}} " \
+      "{{ with index .Config.Labels \"org.dash.proxy-config-digest\" }}{{ . }}" \
+      "{{ else }}{{ index .Config.Labels \"org.kamal.proxy-config-digest\" }}{{ end }}'",
+      new_command.inspect_state.join(" ")
+  end
+
+  test "State parses the three fields and derives the version from the image tag" do
+    state = Dash::Commands::Proxy::State.parse("abc123 ghcr.io/zoolutions/dash-proxy:v1.2.3 deadbeef\n")
+
+    assert state.exists?
+    assert_equal "abc123", state.id
+    assert_equal "v1.2.3", state.version
+    assert_equal "deadbeef", state.digest
+  end
+
+  # A registry host carries a port, so the tag is what follows the LAST colon -
+  # the same rule `version`'s `awk -F: '{print $NF}'` applies.
+  test "State reads the tag past a registry port" do
+    state = Dash::Commands::Proxy::State.parse("abc123 registry:4443/ghcr.io/zoolutions/dash-proxy:v1.2.3 deadbeef")
+
+    assert_equal "v1.2.3", state.version
+  end
+
+  test "State of a host with no proxy container is empty, not an error" do
+    state = Dash::Commands::Proxy::State.parse("")
+
+    assert_not state.exists?
+    assert_nil state.version
+    assert_nil state.digest
+  end
+
+  # A container booted before the digest label existed inspects to a trailing blank
+  # field - it has to read as "no digest", which is drift, not as a missing container.
+  test "State of an unlabelled container exists but carries no digest" do
+    state = Dash::Commands::Proxy::State.parse("abc123 ghcr.io/zoolutions/dash-proxy:v1.2.3 ")
+
+    assert state.exists?
+    assert_nil state.digest
+  end
 end

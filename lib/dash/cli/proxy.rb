@@ -22,7 +22,9 @@ class Dash::Cli::Proxy < Dash::Cli::Base
         execute *DASH.registry.login
 
         # Before anything reads the new container, volume or network: bring a
-        # host still on pre-rename identity across. A no-op once it has been.
+        # host still on pre-rename identity across, and make the apps-config
+        # directory in the same round trip. Nothing but a `test -f` once it has
+        # been - see Dash::Cli::Proxy::LegacyRename.
         Dash::Cli::Proxy::LegacyRename.new(host, self).run
 
         proxy = DASH.proxy(host)
@@ -34,7 +36,8 @@ class Dash::Cli::Proxy < Dash::Cli::Base
         else
           stale_hosts << host.to_s if drift.drifted?
 
-          version = capture_with_info(*proxy.version).strip.presence
+          # The tag off the inspect the drift check already made, not a read of its own.
+          version = drift.version
 
           if version && Dash::Utils.older_version?(version, Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
             raise "dash-proxy version #{version} is too old, run `dash proxy reboot` in order to update to at least #{Dash::Configuration::Proxy::Run::MINIMUM_VERSION}"
@@ -48,7 +51,6 @@ class Dash::Cli::Proxy < Dash::Cli::Base
             execute *proxy.remove_proxy_secrets_file, raise_on_non_zero_exit: false
           end
 
-          execute *proxy.ensure_apps_config_directory
           execute *proxy.start_holder_or_run if proxy.port_holder?
           execute *proxy.start_or_run(digest: drift.expected_digest)
         end
@@ -77,10 +79,10 @@ class Dash::Cli::Proxy < Dash::Cli::Base
           execute *DASH.registry.login
 
           # Bring a pre-rename host across before the container can be created
-          # against an empty volume or a network nothing else joined. A no-op
-          # once it has been.
-          execute *DASH.docker.connect_legacy_network_containers
-          execute *DASH.loadbalancer.copy_legacy_config_volume
+          # against an empty volume or a network nothing else joined, and make
+          # the apps-config directory in the same round trip. Nothing but a
+          # `test -f` once it has been.
+          execute *DASH.loadbalancer.prepare_boot
 
           # The load balancer terminates TLS and owns the cache, so its host
           # needs the proxy secrets (acme credentials, cache store) just like
@@ -91,8 +93,6 @@ class Dash::Cli::Proxy < Dash::Cli::Base
           else
             execute *DASH.loadbalancer.remove_proxy_secrets_file, raise_on_non_zero_exit: false
           end
-
-          execute *DASH.loadbalancer.ensure_apps_config_directory
 
           # TLS terminates at the load balancer, so the TLS material the app
           # hosts get - custom certificates and the mTLS client CA - must
@@ -105,10 +105,11 @@ class Dash::Cli::Proxy < Dash::Cli::Base
           # The same drift detection the proxy hosts get: a loadbalancer booted
           # with a different config digest reboots below (or warns, when
           # automatic reboot is off) instead of serving a stale config forever.
-          container_id = capture_with_info(*DASH.loadbalancer.container_id, raise_on_non_zero_exit: false).strip
-          current_digest = capture_with_info(*DASH.loadbalancer.config_digest, raise_on_non_zero_exit: false).strip
+          state = Dash::Commands::Proxy::State.parse(
+            capture_with_info(*DASH.loadbalancer.inspect_state, raise_on_non_zero_exit: false)
+          )
 
-          if container_id.present? && current_digest != DASH.loadbalancer_config.run_config_digest
+          if state.exists? && state.digest.to_s != DASH.loadbalancer_config.run_config_digest
             if auto_reboot
               # Leave the old loadbalancer serving until its reboot below.
               lb_drifted << host.to_s

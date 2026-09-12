@@ -23,6 +23,9 @@ class Dash::Configuration::Proxy
   LEGACY_LOADBALANCER_CONTAINER_NAME = "kamal-loadbalancer"
   LEGACY_HOLDER_CONTAINER_NAME = "kamal-proxy-net"
   LEGACY_NETWORK = "kamal"
+  # Written into the run directory once a host is verifiably past the 3c rename, so the
+  # bridge costs it nothing but a `test -f` on every deploy after. Deleted in stage 3d.
+  LEGACY_RENAME_MARKER = ".legacy-renamed"
   LEGACY_CONFIG_VOLUME = "kamal-proxy-config"
   LEGACY_LOADBALANCER_CONFIG_VOLUME = "kamal-loadbalancer-config"
   LEGACY_IMAGE_TITLE = "kamal-proxy"

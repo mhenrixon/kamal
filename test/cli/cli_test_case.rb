@@ -59,6 +59,28 @@ class CliTestCase < ActiveSupport::TestCase
       captures
     end
 
+    # #recorded_commands and #recorded_captures each answer one half of what a host was
+    # asked to do; a caller that needs both interleaved in the order they actually ran -
+    # a round-trip count, where an execute and a capture cost the same SSH round trip -
+    # cannot get that by nesting the two, since each keeps its own array. This shares one
+    # array between both stubs instead. Formats captures without their trailing options
+    # hash (`raise_on_non_zero_exit: false` and friends), which reads as noise next to a
+    # shell command; #recorded_captures keeps the hash for its own callers.
+    def recorded_commands_and_captures
+      round_trips = []
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| round_trips << cmd.to_command; true }
+      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
+        .with { |*args| round_trips << args.reject { |arg| arg.is_a?(Hash) }.join(" "); false }
+
+      begin
+        yield
+      ensure
+        SSHKit::Backend::Printer.any_instance.unstub(:execute_command)
+      end
+
+      round_trips
+    end
+
     # The id `docker run --detach` prints, which a boot reads instead of asking docker for
     # the container id in a round trip of its own.
     def stub_run_capture(id: "123")
