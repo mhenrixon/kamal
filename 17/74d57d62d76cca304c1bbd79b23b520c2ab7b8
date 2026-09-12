@@ -1,0 +1,22 @@
+test/commands/app_test.rb
+  s_30d1466dd9393f::t_9fe6df41bcdc1b 81,106-108
+  s_30d1466dd9393f::t_244423df97467d 113
+lib/dash/commands/app.rb
+  s_30d1466dd9393f::t_9fe6df41bcdc1b 151-160,165-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "1774d57d62d76cca304c1bbd79b23b520c2ab7b8",
+  "prompts": {},
+  "sessions": {
+    "s_30d1466dd9393f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "678ecd7e-5607-4caf-b912-c8c0a26a493a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
