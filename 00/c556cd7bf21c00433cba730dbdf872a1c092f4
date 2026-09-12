@@ -1,0 +1,19 @@
+test/test_helper.rb
+  s_a07a24960db1c1::t_a3068ed0454bef 77-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "00c556cd7bf21c00433cba730dbdf872a1c092f4",
+  "prompts": {},
+  "sessions": {
+    "s_a07a24960db1c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a0cd518e-5bcc-49fe-8a21-9a1e4765dbbc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
