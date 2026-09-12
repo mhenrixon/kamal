@@ -175,7 +175,7 @@ class CliMainTest < CliTestCase
       .returns("")
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("")
       .at_least_once
 
@@ -250,7 +250,7 @@ class CliMainTest < CliTestCase
       .returns("")
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("")
 
     assert_raises(Dash::Cli::LockError) do
@@ -287,7 +287,7 @@ class CliMainTest < CliTestCase
       .returns("")
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("")
 
     error = assert_raises(Dash::Cli::LockError) do
@@ -344,7 +344,7 @@ class CliMainTest < CliTestCase
       .returns("")
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("")
       .at_least_once
 

@@ -73,6 +73,26 @@ class CommandsRegistryTest < ActiveSupport::TestCase
     end
   end
 
+  # The login's own stdout is discarded so a capture folded in behind it comes back with
+  # the following command's answer alone.
+  test "registry login then command" do
+    assert_equal \
+      "docker login hub.docker.com -u \"dhh\" -p \"secret\" > /dev/null && docker info --format '{{index .RegistryConfig.Mirrors 0}}'",
+      registry.login_then([ :docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'" ]).join(" ")
+  end
+
+  test "registry login then command keeps the credentials sensitive" do
+    command = registry.login_then([ :docker, :info ])
+
+    assert_equal [ "\"dhh\"", "\"secret\"" ], command.grep(Dash::Utils::Sensitive).map(&:unredacted)
+  end
+
+  test "registry login then command with a local registry issues the command alone" do
+    @config[:registry] = { "server" => "localhost:5000" }
+
+    assert_equal "docker info", registry.login_then([ :docker, :info ]).join(" ")
+  end
+
   test "registry logout" do
     assert_equal \
       "docker logout hub.docker.com",

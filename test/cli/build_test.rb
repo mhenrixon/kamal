@@ -353,16 +353,17 @@ class CliBuildTest < CliTestCase
   end
 
   # The audit line, the stale-image removal and the pull are one round trip per host: the
-  # audit is still written first, and the removal still cannot fail the pull.
+  # audit is still written first, and the removal still cannot fail the pull. The registry
+  # login rides along in the mirror probe's round trip rather than paying for one of its own.
   test "pull" do
     run_command("pull").tap do |output|
-      assert_match /docker info --format '{{index .RegistryConfig.Mirrors 0}}'/, output
+      assert_match "docker login -u [REDACTED] -p [REDACTED] > /dev/null && docker info --format '{{index .RegistryConfig.Mirrors 0}}'", output
       assert_match %r{Pulled image with version 999" >> \.dash/app-audit\.log && \( docker image rm --force dhh/app:999 \|\| true \) && docker pull dhh/app:999}, output
       assert_match "docker inspect -f '{{ .Config.Labels.service }}' dhh/app:999 | grep -x app || (echo \"Image dhh/app:999 is missing the 'service' label\" && exit 1)", output
     end
   end
 
-  test "pull issues two commands per host" do
+  test "pull issues three round trips per host" do
     commands = recorded_commands { run_command("pull") }
 
     pulls = commands.select { |command| command.include?("docker pull dhh/app:999") }
@@ -372,11 +373,50 @@ class CliBuildTest < CliTestCase
     # An exact total, not a rounded average: integer division would swallow one extra
     # command on a single host.
     assert_equal 2 * DASH.app_hosts.size, commands.count { |command| command.include?("dhh/app:999") }
+
+    # The login is folded into the probe, so no host issues it on its own.
+    assert_equal DASH.app_hosts.size, commands.count { |command| command.include?("docker login") }
+    assert commands.grep(/docker login/).all? { |command| command.include?("docker info --format") }, commands.grep(/docker login/).inspect
+
+    assert_equal 3 * DASH.app_hosts.size, commands.size, commands.inspect
+  end
+
+  # Nothing to seed on one host, so the probe never runs and the login goes on its own.
+  test "pull on a single host logs in without probing for a mirror" do
+    commands = recorded_commands { run_command("pull", fixture: :with_two_roles_one_host) }
+
+    assert_equal 1, DASH.app_hosts.size
+    assert commands.first.include?("docker login"), commands.inspect
+    assert_equal 1, commands.count { |command| command.include?("docker login") }
+    assert_equal 0, commands.count { |command| command.include?("docker info --format") }
+    assert_equal 3, commands.size, commands.inspect
+  end
+
+  # A local registry needs no login, so the fold collapses to the probe alone.
+  test "pull with a local registry probes for a mirror without logging in" do
+    Dash::Cli::Build::PortForwarding.any_instance.stubs(:forward).yields
+
+    commands = recorded_commands { run_command("pull", fixture: :with_local_registry) }
+
+    assert_equal 0, commands.count { |command| command.include?("docker login") }
+    assert_equal DASH.app_hosts.size, commands.count { |command| command.include?("docker info --format") }
+    assert_equal 3 * DASH.app_hosts.size, commands.size, commands.inspect
+  end
+
+  # The "no mirror configured" rescue matches docker's index error and nothing else, so a
+  # rejected login inside the same command still comes back out.
+  test "pull raises when the login folded into the mirror probe fails" do
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
+      .with { |*args| args.include?(:login) }
+      .raises(SSHKit::Command::Failed.new("unauthorized: incorrect username or password"))
+
+    error = assert_raises(SSHKit::Runner::ExecuteError) { run_command("pull") }
+    assert_match "unauthorized", error.message
   end
 
   test "pull with mirror" do
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("registry-mirror.example.com")
       .at_least_once
 
@@ -390,7 +430,7 @@ class CliBuildTest < CliTestCase
 
   test "pull with mirrors" do
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :info, "--format '{{index .RegistryConfig.Mirrors 0}}'")
+      .with { |*args| args.join(" ").end_with?("docker info --format '{{index .RegistryConfig.Mirrors 0}}'") }
       .returns("registry-mirror.example.com", "registry-mirror2.example.com")
       .at_least_once
 
