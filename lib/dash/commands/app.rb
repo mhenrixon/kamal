@@ -148,14 +148,22 @@ class Dash::Commands::App < Dash::Commands::Base
     # The same two readiness sources #status and #health_probe cover, read into `$status`
     # so the loop around them is the same either way. They differ in what a non-zero exit
     # means. A probe that exits non-zero IS the answer "not ready", so its output is
-    # discarded and the loop goes on; an inspect that exits non-zero is no answer at all -
-    # docker is unreachable or the container is gone - so it takes the whole command down
-    # with it, with docker's complaint on stderr for SSHKit to put in the exception.
+    # discarded and the loop goes on; an inspect that produced no answer at all - docker is
+    # unreachable, or the container is gone - takes the whole command down with it, with
+    # docker's complaint on stderr for SSHKit to put in the exception.
+    #
+    # An empty status is checked as well as the exit code, because the exit code alone is
+    # not portable: the read is a pipeline, so its status is xargs', and a `docker container
+    # ls` that failed pipes nothing. GNU xargs then runs `docker inspect` with no container
+    # and exits 123, but BSD and BusyBox xargs skip the utility entirely and exit 0. Both
+    # leave `$status` empty, and empty is not something a working `docker inspect --format`
+    # can print.
     def readiness_probe(version:)
       if role.healthcheck&.exec?
         [ "if", *health_probe(version: version), ">/dev/null 2>&1;", "then status=healthy;", "else status=\"#{EXEC_PROBE_FAILED}\";", "fi;" ]
       else
-        [ "status=#{substitute(*status(version: version))} || exit $?;" ]
+        [ "status=#{substitute(*status(version: version))} || exit $?;",
+          "if [ -z \"$status\" ]; then echo \"could not read the status of #{container_name(version)}\" 1>&2; exit 1; fi;" ]
       end
     end
 

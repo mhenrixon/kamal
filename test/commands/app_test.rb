@@ -78,7 +78,7 @@ class CommandsAppTest < ActiveSupport::TestCase
   # client-side poll made, one round trip at a time.
   test "wait for ready polls the container status until it is one the poller accepts" do
     assert_equal \
-      "sh -c 'started=$(date +%s); while true; do status=$(docker container ls --all --filter '\\''name=^app-web-999$'\\'' --quiet | xargs docker inspect --format '\\''{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck:{{.State.Status}}{{end}}'\\'') || exit $?; case \"$status\" in healthy|no-healthcheck:running) echo \"$status\"; exit 0;; esac; elapsed=$(( $(date +%s) - started )); if [ \"$elapsed\" -ge 30 ]; then echo \"$status\"; exit 0; fi; echo \"dash-readiness $elapsed $(( 30 - elapsed )) $status\" 1>&2; sleep 1; done'",
+      "sh -c 'started=$(date +%s); while true; do status=$(docker container ls --all --filter '\\''name=^app-web-999$'\\'' --quiet | xargs docker inspect --format '\\''{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck:{{.State.Status}}{{end}}'\\'') || exit $?; if [ -z \"$status\" ]; then echo \"could not read the status of app-web-999\" 1>&2; exit 1; fi; case \"$status\" in healthy|no-healthcheck:running) echo \"$status\"; exit 0;; esac; elapsed=$(( $(date +%s) - started )); if [ \"$elapsed\" -ge 30 ]; then echo \"$status\"; exit 0; fi; echo \"dash-readiness $elapsed $(( 30 - elapsed )) $status\" 1>&2; sleep 1; done'",
       new_command.wait_for_ready(version: "999", timeout: 30).join(" ")
   end
 
@@ -103,10 +103,14 @@ class CommandsAppTest < ActiveSupport::TestCase
   # A status that cannot be read at all is not a readiness answer - docker is broken or the
   # container is gone. Swallowing it would spend the whole deploy timeout waiting for an
   # answer that is never coming, and then blame the container for not being ready.
+  # The read is a pipeline, so its exit code is xargs' — and whether xargs runs anything at
+  # all on empty input differs between GNU and BSD/BusyBox. An empty status is the one
+  # signal both agree on, and one a working `docker inspect --format` cannot produce.
   test "wait for ready fails the command when the status cannot be read" do
     command = new_command.wait_for_ready(version: "999", timeout: 30).join(" ")
 
     assert_match "|| exit $?;", command
+    assert_match %(if [ -z "$status" ]; then echo "could not read the status of app-web-999" 1>&2; exit 1; fi;), command
     assert_no_match %r{2>/dev/null}, command
   end
 
