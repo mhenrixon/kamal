@@ -21,6 +21,14 @@ class Dash::Cli::Proxy::LoadbalancerReboot
     execute *DASH.registry.login
     ensure_network
 
+    # After the network the bridge attaches the legacy network's containers to,
+    # and before anything that could create the new container or let `docker
+    # run --volume` create dash-loadbalancer-config empty: adopt the legacy
+    # volume's routing table, dynamic domains and ACME cache. Carries the
+    # apps-config mkdir this reboot paid a round trip for anyway
+    # (zoolutions/dash#168, see Dash::Commands::Loadbalancer#legacy_rename).
+    execute *DASH.loadbalancer.prepare_boot
+
     info "Stopping and removing #{DASH.loadbalancer.container_name} on #{host}, if running..."
     execute *DASH.loadbalancer.stop, raise_on_non_zero_exit: false
     execute *DASH.loadbalancer.remove_container
@@ -32,7 +40,6 @@ class Dash::Cli::Proxy::LoadbalancerReboot
       execute *DASH.loadbalancer.remove_proxy_secrets_file, raise_on_non_zero_exit: false
     end
 
-    execute *DASH.loadbalancer.ensure_apps_config_directory
     Dash::Cli::Proxy::LoadbalancerClaim.new(host, sshkit).claim_run_config(replace: true)
     execute *DASH.loadbalancer.run
 

@@ -414,6 +414,12 @@ class Dash::Cli::Proxy < Dash::Cli::Base
       if DASH.config.proxy.load_balancing?
         on(DASH.config.proxy.effective_loadbalancer) do |host|
           execute *DASH.registry.login
+          # start_or_run falls through to `docker run` on a host with no
+          # container, so this is a volume-creating path too and gets the same
+          # bridge boot and reboot do (zoolutions/dash#168). It also makes the
+          # apps-config directory the bind mount would otherwise have docker
+          # create root-owned.
+          execute *DASH.loadbalancer.prepare_boot
           execute *DASH.loadbalancer.start_or_run
         end
       else

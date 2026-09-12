@@ -78,6 +78,34 @@ class CliProxyTest < CliTestCase
     end
   end
 
+  # zoolutions/dash#168, the loadbalancer half: a dedicated LB host reached by `reboot`
+  # before it was ever booted would get `dash-loadbalancer-config` created empty by
+  # `docker run`, and its routing table, dynamic domains and ACME cache would never be
+  # adopted from `kamal-loadbalancer-config`.
+  test "reboot routes the loadbalancer host through the stage-3c bridge before creating the container" do
+    Dash::Configuration::Proxy.any_instance.unstub(:load_balancing?)
+
+    run_command("reboot", "-y", fixture: :with_loadbalancer).tap do |output|
+      create = output.index("docker network create dash on lb.example.com")
+      bridge = output.index("test -f .dash/loadbalancer/.legacy-renamed || (")
+      copy = output.index("docker volume inspect dash-loadbalancer-config > /dev/null 2>&1 || ! docker volume inspect kamal-loadbalancer-config")
+      run = output.index("docker run --name load-balancer")
+
+      assert bridge, "reboot must send the loadbalancer host the bridge: #{output}"
+      assert create && copy && run, output
+      assert create < bridge, "the bridge attaches containers to the dash network, which has to exist first"
+      assert bridge < run, "the volume copy must land before docker run can create the volume empty"
+    end
+  end
+
+  test "reboot carries the loadbalancer bridge in the apps-config round trip it already paid" do
+    Dash::Configuration::Proxy.any_instance.unstub(:load_balancing?)
+
+    run_command("reboot", "-y", fixture: :with_loadbalancer).tap do |output|
+      assert_match(/test -f \.dash\/loadbalancer\/\.legacy-renamed \|\| \(.*\) && mkdir -p \.dash\/proxy\/apps-config on lb\.example\.com/, output)
+    end
+  end
+
   # SSHKit prefixes the first word of every command with /usr/bin/env, and
   # `env !` is exit 127 — so no chain the gem emits may start with `!`.
   test "no command sent to a host starts with shell negation" do
@@ -133,6 +161,32 @@ class CliProxyTest < CliTestCase
       assert guard && network && volume && container, output
       assert guard < network, "the marker decides before any docker call: #{output}"
       assert network < volume && volume < container, "the bridge keeps its documented order: #{output}"
+    end
+  end
+
+  # zoolutions/dash#168. `reboot` creates the new container, and `docker run --volume`
+  # auto-creates the new config volume empty if it is not there yet - so a host rebooted
+  # before it was ever booted would take the bridge's volume-existence guard out from
+  # under it, adopting nothing and recording itself migrated. The bridge belongs on this
+  # path too, ahead of anything that can create the new identity.
+  test "reboot routes a host through the stage-3c bridge before replacing the container" do
+    run_command("reboot", "-y").tap do |output|
+      bridge = output.index("test -f .dash/proxy/.legacy-renamed || (")
+      stop = output.index("docker container stop --time 40 dash-proxy on 1.1.1.1")
+      run = output.index("| xargs docker run --name dash-proxy")
+
+      assert bridge, "reboot must send the bridge: #{output}"
+      assert stop && run, output
+      assert bridge < stop, "the bridge decides before the running proxy is taken down: #{output}"
+      assert bridge < run, "the new volume must not exist before the legacy one is copied into it"
+    end
+  end
+
+  # The bridge rides the apps-config mkdir the reboot already paid a round trip for, so
+  # closing the gap costs none - the same fold boot got in zoolutions/dash#167.
+  test "reboot carries the bridge in the apps-config round trip it already paid" do
+    run_command("reboot", "-y").tap do |output|
+      assert_match(/test -f \.dash\/proxy\/\.legacy-renamed \|\| \(.*\) && mkdir -p \.dash\/proxy\/apps-config on 1\.1\.1\.1/, output)
     end
   end
 
@@ -1050,6 +1104,22 @@ class CliProxyTest < CliTestCase
     run_command("loadbalancer", "start", fixture: :with_loadbalancer).tap do |output|
       assert_match "docker login", output
       assert_match "docker container start load-balancer || docker run --name load-balancer", output
+    end
+  end
+
+  # `start_or_run` falls through to `docker run` on a host with no container, which is
+  # the same volume-creating path `reboot` takes - so this admin command gets the bridge
+  # too, the last thing that can create dash-loadbalancer-config (zoolutions/dash#168).
+  test "loadbalancer start routes through the stage-3c bridge before it can run" do
+    Dash::Configuration::Proxy.any_instance.unstub(:load_balancing?)
+
+    run_command("loadbalancer", "start", fixture: :with_loadbalancer).tap do |output|
+      bridge = output.index("test -f .dash/loadbalancer/.legacy-renamed || (")
+      start = output.index("docker container start load-balancer || docker run --name load-balancer")
+
+      assert bridge, "loadbalancer start must send the bridge: #{output}"
+      assert start, output
+      assert bridge < start, "the volume copy has to land before docker run could create the volume empty"
     end
   end
 
