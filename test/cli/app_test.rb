@@ -559,32 +559,58 @@ class CliAppTest < CliTestCase
   end
 
   test "stale_containers" do
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :ps, "--filter", "label=service=app", "--filter", "label=destination=", "--filter", "label=role=web", "--format", "\"{{.Names}}\"", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("12345678\n87654321\n")
-
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("12345678\n")
+    stub_stale_state versions: [ "12345678", "87654321" ], running: "12345678"
 
     run_command("stale_containers").tap do |output|
       assert_match /Detected stale container for role web with version 87654321/, output
+      assert_no_match /version 12345678/, output
     end
   end
 
   test "stop stale_containers" do
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :ps, "--filter", "label=service=app", "--filter", "label=destination=", "--filter", "label=role=web", "--format", "\"{{.Names}}\"", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("12345678\n87654321\n")
-
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:sh, "-c", "'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting'", "|", :head, "-1", "|", "while read line; do echo ${line#app-web-}; done", raise_on_non_zero_exit: false)
-      .returns("12345678\n")
+    stub_stale_state versions: [ "12345678", "87654321" ], running: "12345678"
 
     run_command("stale_containers", "--stop").tap do |output|
       assert_match /Stopping stale container for role web with version 87654321/, output
       assert_match /#{Regexp.escape("docker container ls --all --filter 'name=^app-web-87654321$' --quiet | xargs docker stop")}/, output
     end
+  end
+
+  test "stale_containers detects nothing when the host reports no containers" do
+    stub_stale_state versions: [], running: nil
+
+    run_command("stale_containers", "--stop").tap do |output|
+      assert_no_match /stale container/, output
+      assert_no_match /xargs docker stop/, output
+    end
+  end
+
+  # --quiet drops the per-host header, not the finding itself - see puts_by_host.
+  test "stale_containers drops the host header with --quiet" do
+    stub_stale_state versions: [ "12345678", "87654321" ], running: "12345678"
+
+    run_command("stale_containers", "--quiet").tap do |output|
+      assert_match /Detected stale container for role web with version 87654321/, output
+      assert_no_match /App Host: 1\.1\.1\.1/, output
+    end
+  end
+
+  # Counted at the capture layer, not the Printer, for the same reason as the boot test
+  # above: a stubbed capture never reaches execute_command.
+  test "stale_containers reads the version list and the running version in a single round trip per host and role" do
+    captures = []
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
+      .with { |*args| captures << args.join(" "); true }
+      .returns("12345678\n87654321\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n12345678\n")
+
+    run_command("stale_containers", config: :with_roles, host: nil).tap do |output|
+      assert_match /Detected stale container for role web with version 87654321/, output
+      assert_match /Detected stale container for role workers with version 87654321/, output
+    end
+
+    # Two roles over two hosts each - one capture per pair, not two.
+    assert_equal 4, captures.size, captures.inspect
+    assert captures.all? { |capture| capture.include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }, captures.inspect
   end
 
   test "details" do
@@ -1128,6 +1154,14 @@ class CliAppTest < CliTestCase
       rescue SSHKit::Runner::ExecuteError => e
         raise e unless allow_execute_error
       end
+    end
+
+    # The single capture #stale_containers makes per (host, role): the role's versions,
+    # the separator, then the version running now.
+    def stub_stale_state(versions:, running:)
+      SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
+        .with { |*args| args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
+        .returns([ *versions, Dash::Commands::App::BOOT_STATE_SEPARATOR, running ].compact.join("\n") + "\n")
     end
 
     def stub_running

@@ -3,9 +3,15 @@ class Dash::Commands::App < Dash::Commands::Base
 
   ACTIVE_DOCKER_STATUSES = [ :running, :restarting ]
 
-  # Separates the two answers #boot_state returns. A container id is hex and a version is
-  # a name suffix, so neither can produce this line on its own.
+  # Separates the two answers #boot_state and #stale_state return. A container id is hex
+  # and a version is a name suffix, so neither can produce this line on its own.
   BOOT_STATE_SEPARATOR = "--%--"
+
+  # The two halves of a #boot_state or #stale_state capture, raw. Callers decide what an
+  # empty half means; the separator line itself is dropped.
+  def self.split_state(output)
+    output.to_s.partition(/^#{Regexp.escape(BOOT_STATE_SEPARATOR)}$/).values_at(0, 2)
+  end
 
   attr_reader :role, :host
 
@@ -89,6 +95,16 @@ class Dash::Commands::App < Dash::Commands::Base
   def boot_state(version)
     chain \
       container_id_for_version(version),
+      [ :echo, BOOT_STATE_SEPARATOR ],
+      current_running_version
+  end
+
+  # Everything the stale check needs from a host: every version of the role that has a
+  # container, and the version running now - the difference is what is stale. Same shape
+  # as #boot_state, same separator, same reason for `;` over `&&`.
+  def stale_state
+    chain \
+      list_versions,
       [ :echo, BOOT_STATE_SEPARATOR ],
       current_running_version
   end
