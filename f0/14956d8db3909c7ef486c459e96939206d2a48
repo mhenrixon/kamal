@@ -1,0 +1,29 @@
+test/cli/main_test.rb
+  s_34156b0f405e46::t_90248014245f9b 178,253,290,347
+test/commands/registry_test.rb
+  s_34156b0f405e46::t_24911f42454d62 76-95
+lib/dash/cli/build.rb
+  s_34156b0f405e46::t_107e4cfbd73b02 78,226-245,247
+lib/dash/commands/registry.rb
+  s_34156b0f405e46::t_dda4c5af4e78e5 25,27
+  s_34156b0f405e46::t_56f27c195c9cee 16-24,26,28-29
+test/cli/build_test.rb
+  s_34156b0f405e46::t_faeb609d7f844b 356-357,360,366,376-388,391-396,398-414,419,433
+  s_34156b0f405e46::t_dda4c5af4e78e5 389-390,397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "f014956d8db3909c7ef486c459e96939206d2a48",
+  "prompts": {},
+  "sessions": {
+    "s_34156b0f405e46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ef09c25a-cf9a-4247-9d9f-63ecdb9f1f95",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
