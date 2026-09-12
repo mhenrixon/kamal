@@ -66,11 +66,16 @@ class CliTestCase < ActiveSupport::TestCase
     # array between both stubs instead. Formats captures without their trailing options
     # hash (`raise_on_non_zero_exit: false` and friends), which reads as noise next to a
     # shell command; #recorded_captures keeps the hash for its own callers.
+    # Each round trip is tagged with the host it went to. `on` runs hosts in parallel
+    # threads, so the order ACROSS hosts is whatever the scheduler chose that run - a pin
+    # that spells out host A's sequence and then host B's held only while the threads
+    # happened not to overlap (CI seed 59404 interleaved them). Only the order within one
+    # host's list is the gem's to promise; group by host and assert there.
     def recorded_commands_and_captures
       round_trips = []
-      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| round_trips << cmd.to_command; true }
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| round_trips << [ cmd.host.to_s, cmd.to_command ]; true }
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with { |*args| round_trips << args.reject { |arg| arg.is_a?(Hash) }.join(" "); false }
+        .with { |*args| round_trips << [ SSHKit::Backend.current.host.to_s, args.reject { |arg| arg.is_a?(Hash) }.join(" ") ]; false }
 
       begin
         yield

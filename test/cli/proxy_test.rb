@@ -143,8 +143,11 @@ class CliProxyTest < CliTestCase
 
     round_trips = recorded_proxy_round_trips { run_command("boot", fixture: :simple) }
 
-    assert_equal [ "docker network create dash" ] * 2 + PROXY_BOOT_ROUND_TRIPS_PER_HOST * 2, round_trips,
-      "deploy_simple has two proxy hosts: the network sweep, then the pinned sequence twice"
+    assert_equal %w[ 1.1.1.1 1.1.1.2 ], round_trips.keys.sort, "deploy_simple has two proxy hosts"
+    round_trips.each do |host, sequence|
+      assert_equal [ "docker network create dash" ] + PROXY_BOOT_ROUND_TRIPS_PER_HOST, sequence,
+        "#{host}: the network sweep, then the pinned sequence"
+    end
   end
 
   # Nothing changes for a host still running kamal-proxy: the three bridge steps travel
@@ -1605,13 +1608,16 @@ class CliProxyTest < CliTestCase
       stub_proxy_state("dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:#{version} stale-digest")
     end
 
-    # Every round trip a proxy boot spends, executes and captures interleaved in issue
-    # order, with the deploy's own run-directory and lock commands filtered out and the
-    # long ones elided - the count and the order are what this pins, not the shell.
+    # Every round trip a proxy boot spends, per host: executes and captures interleaved in
+    # the order that host issued them, with the deploy's own run-directory and lock commands
+    # filtered out and the long ones elided - the count and the order are what this pins,
+    # not the shell. Keyed by host because hosts run in parallel and only each host's own
+    # order is deterministic (see CliTestCase#recorded_commands_and_captures).
     def recorded_proxy_round_trips
       recorded_commands_and_captures { yield }
-        .reject { |command| command.match?(/\.dash\/lock-|mv \.kamal \.dash/) }
-        .map { |command| elide(command) }
+        .reject { |_host, command| command.match?(/\.dash\/lock-|mv \.kamal \.dash/) }
+        .group_by(&:first)
+        .transform_values { |pairs| pairs.map { |_host, command| elide(command) } }
     end
 
     # Collapses the parts that carry a digest, a boot-config read or the whole stage-3c
