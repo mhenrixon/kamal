@@ -379,10 +379,12 @@ class Dash::Commands::Proxy < Dash::Commands::Base
       File.join config.proxy_boot.host_directory, Dash::Configuration::Proxy::LEGACY_RENAME_MARKER
     end
 
+    # confirmed_empty?, not a negated inspect: a docker error while checking must never
+    # read as "confirmed gone" (zoolutions/dash#167 review).
     def mark_legacy_renamed
       combine \
-        negate(container_exists(Dash::Configuration::Proxy::LEGACY_CONTAINER_NAME)),
-        negate(container_exists(Dash::Configuration::Proxy::LEGACY_HOLDER_CONTAINER_NAME)),
+        confirmed_empty?(container_id_for(container_name: Dash::Configuration::Proxy::LEGACY_CONTAINER_NAME)),
+        confirmed_empty?(container_id_for(container_name: Dash::Configuration::Proxy::LEGACY_HOLDER_CONTAINER_NAME)),
         make_directory(config.proxy_boot.host_directory),
         [ :touch, legacy_rename_marker ]
     end

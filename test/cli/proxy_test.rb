@@ -1539,18 +1539,9 @@ class CliProxyTest < CliTestCase
     # order, with the deploy's own run-directory and lock commands filtered out and the
     # long ones elided - the count and the order are what this pins, not the shell.
     def recorded_proxy_round_trips
-      round_trips = []
-      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| round_trips << cmd.to_command; true }
-      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with { |*args| round_trips << args.reject { |arg| arg.is_a?(Hash) }.join(" "); false }
-
-      begin
-        yield
-      ensure
-        SSHKit::Backend::Printer.any_instance.unstub(:execute_command)
-      end
-
-      round_trips.reject { |command| command.match?(/\.dash\/lock-|mv \.kamal \.dash/) }.map { |command| elide(command) }
+      recorded_commands_and_captures { yield }
+        .reject { |command| command.match?(/\.dash\/lock-|mv \.kamal \.dash/) }
+        .map { |command| elide(command) }
     end
 
     # Collapses the parts that carry a digest, a boot-config read or the whole stage-3c

@@ -580,9 +580,19 @@ class CommandsProxyTest < ActiveSupport::TestCase
   test "legacy_rename writes the marker only once both legacy containers are gone" do
     command = new_command.legacy_rename.join(" ")
 
-    assert_match "( ! docker container inspect kamal-proxy > /dev/null 2>&1 " \
-      "&& ! docker container inspect kamal-proxy-net > /dev/null 2>&1 " \
+    assert_match "( result=$(docker container ls --all --filter 'name=^kamal-proxy$' --quiet) && [ -z \"$result\" ] " \
+      "&& result=$(docker container ls --all --filter 'name=^kamal-proxy-net$' --quiet) && [ -z \"$result\" ] " \
       "&& mkdir -p .dash/proxy && touch .dash/proxy/.legacy-renamed || true )", command
+  end
+
+  # A docker error while checking (daemon busy, permission denied) is not proof the
+  # container is gone - unlike a negated `inspect`, which cannot tell the two apart.
+  test "legacy_rename's marker check fails closed on a docker error, not just a miss" do
+    command = new_command.legacy_rename.join(" ")
+
+    assert_match "result=$(docker container ls --all --filter 'name=^kamal-proxy$' --quiet) && [ -z \"$result\" ]", command
+    refute_match "! docker container inspect", command,
+      "a negated inspect can't tell \"not found\" from \"the daemon couldn't be asked\": #{command}"
   end
 
   # A failed volume copy must still abort the boot: it is the one step whose failure

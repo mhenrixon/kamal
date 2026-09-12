@@ -40,6 +40,18 @@ module Dash::Commands
       docker :container, :ls, *("--all" unless only_running), "--filter", "'name=^#{container_name}$'", "--quiet"
     end
 
+    # True only when `list_command`'s own output is confirmed empty - never inferred from
+    # a failure. `docker container inspect name > /dev/null 2>&1` (negated) cannot tell
+    # "no such container" from "the daemon could not be asked" - both exit non-zero - so a
+    # transient failure there reads as confirmed absence. A `list` exits 0 whichever way
+    # the match went and non-zero only on a genuine failure, so `result=$(list) && [ -z
+    # "$result" ]` fails closed: `result=$(list)` carries list's own exit status (POSIX;
+    # verified against sh and bash), so a failed list stops the chain before the test runs.
+    # `list_command` must be a listing (docker container/volume ls), never an inspect.
+    def confirmed_empty?(list_command)
+      [ "result=$(#{list_command.join(" ")})", "&&", "[", "-z", "\"$result\"", "]" ]
+    end
+
     def make_directory_for(remote_file)
       make_directory Pathname.new(remote_file).dirname.to_s
     end
