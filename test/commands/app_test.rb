@@ -598,6 +598,20 @@ class CommandsAppTest < ActiveSupport::TestCase
       new_command.boot_state("999").join(" ")
   end
 
+  test "stale_state pairs the version list with the running version in one command" do
+    assert_equal \
+      "docker ps --filter label=service=app --filter label=destination= --filter label=role=web --format \"{{.Names}}\" | while read line; do echo ${line#app-web-}; done ; echo --%-- ; " \
+      "sh -c 'docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting --filter ancestor=$(docker image ls --filter reference=dhh/app:latest --format '\\''{{.ID}}'\\'') ; docker ps --latest --format '\\''{{.Names}}'\\'' --filter label=service=app --filter label=destination= --filter label=role=web --filter status=running --filter status=restarting' | head -1 | while read line; do echo ${line#app-web-}; done",
+      new_command.stale_state.join(" ")
+  end
+
+  test "split_state returns the raw halves either side of the separator line" do
+    assert_equal [ "abc\n", "\n123\n" ], Dash::Commands::App.split_state("abc\n--%--\n123\n")
+    assert_equal [ "\n", "\n" ], Dash::Commands::App.split_state("\n--%--\n")
+    assert_equal [ "", "" ], Dash::Commands::App.split_state(nil)
+    assert_equal [ "a--%--b\n", "\n" ], Dash::Commands::App.split_state("a--%--b\n--%--\n"), "only a whole line separates"
+  end
+
   test "list_versions" do
     assert_equal \
       "docker ps --filter label=service=app --filter label=destination= --filter label=role=web --format \"{{.Names}}\" | while read line; do echo ${line#app-web-}; done",

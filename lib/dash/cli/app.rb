@@ -186,8 +186,8 @@ class Dash::Cli::App < Dash::Cli::Base
     with_lock_if_stopping do
       on_roles(DASH.roles, hosts: DASH.app_hosts) do |host, role|
         app = DASH.app(role: role, host: host)
-        versions = capture_with_info(*app.list_versions, raise_on_non_zero_exit: false).split("\n")
-        versions -= [ capture_with_info(*app.current_running_version, raise_on_non_zero_exit: false).strip ]
+        listed, running = Dash::Commands::App.split_state(capture_with_info(*app.stale_state, raise_on_non_zero_exit: false))
+        versions = listed.strip.split("\n") - [ running.strip ]
 
         versions.each do |version|
           if stop

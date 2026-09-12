@@ -58,8 +58,7 @@ class Dash::Cli::App::Boot
     end
 
     def capture_boot_state
-      output = capture_with_info(*app.boot_state(version), raise_on_non_zero_exit: false).to_s
-      clashing, _, running = output.partition(/^#{Regexp.escape(Dash::Commands::App::BOOT_STATE_SEPARATOR)}$/)
+      clashing, running = Dash::Commands::App.split_state(capture_with_info(*app.boot_state(version), raise_on_non_zero_exit: false))
 
       [ clashing.strip.presence, running.strip.presence ]
     end
