@@ -460,7 +460,6 @@ class CliMainTest < CliTestCase
 
     stub_run_capture # the proxy target, printed by the run itself
     stub_readiness_wait "no-healthcheck:running", expect: true # workers
-    stub_readiness_confirm "no-healthcheck:running"
 
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
 

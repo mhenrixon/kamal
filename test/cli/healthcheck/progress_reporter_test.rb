@@ -28,12 +28,25 @@ class CliHealthcheckProgressReporterTest < CliTestCase
   # way past. Only the wait's own beacon is ours to reprint.
   test "anything that is not a progress line is ignored" do
     output = stdouted do
-      report "healthy\n"
       report "Error response from daemon: No such container\n"
       report "dash-readiness not-a-number 26 starting\n"
     end
 
     assert_equal "", output
+  end
+
+  # stdout and stderr are separate SSH streams and their chunks can interleave, so the
+  # final status must never reach the buffer a half-arrived progress line is sitting in.
+  test "the final status on stdout never lands in the middle of a progress line" do
+    reporter = Dash::Cli::Healthcheck::ProgressReporter.new
+
+    output = stdouted do
+      reporter.on_data(nil, :stderr, "dash-readiness 4 2")
+      reporter.on_data(nil, :stdout, "healthy\n")
+      reporter.on_data(nil, :stderr, "6 starting\n")
+    end
+
+    assert_match "(4s elapsed, 26s left)", output
   end
 
   private

@@ -142,10 +142,8 @@ class CliAppTest < CliTestCase
   end
 
   # The wait runs for as long as it may take, so the progress an operator sees has to come
-  # back over that same command while it is still running - and the deadline has to reach
-  # the poller as a status rather than as a failed command, or the poller never gets to
-  # phrase the error.
-  test "the readiness wait streams its progress back and lets the poller judge the result" do
+  # back over that same command while it is still running.
+  test "the readiness wait streams its progress back while it runs" do
     stub_running
     options = nil
     stub_capture { |args| readiness_wait?(args).tap { |matched| options = args.grep(Hash).last if matched } }.returns("healthy")
@@ -153,7 +151,23 @@ class CliAppTest < CliTestCase
     run_command("boot", config: :with_readiness_sources, host: "1.1.1.5")
 
     assert_instance_of Dash::Cli::Healthcheck::ProgressReporter, options[:interaction_handler]
-    assert_equal false, options[:raise_on_non_zero_exit]
+  end
+
+  # Reaching the deadline is an answer the poller phrases; a status that could not be read
+  # at all is a broken command, and it failed the boot on the spot before the wait moved to
+  # the host. It still must - waiting out the deploy timeout for an answer that is never
+  # coming, and then blaming the container, is the failure mode to avoid.
+  test "a readiness wait whose status cannot be read fails the boot instead of waiting" do
+    Thread.report_on_exception = false
+    stub_running
+    stub_capture { |args| readiness_wait?(args) }.raises(SSHKit::Command::Failed.new("Cannot connect to the Docker daemon"))
+
+    output = run_command("boot", config: :with_readiness_sources, host: "1.1.1.5", allow_execute_error: true)
+
+    assert_match "Failed to boot listener on 1.1.1.5", output
+    assert_no_match /Container not ready yet/, output
+  ensure
+    Thread.report_on_exception = true
   end
 
   # The host loop only returns early for a status the poller accepts, so anything else it
@@ -299,7 +313,7 @@ class CliAppTest < CliTestCase
     stub_boot_state clash: "12345678", running: "123", expect: false
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
+    stub_readiness_confirm "no-healthcheck:running", expect: true
 
     run_command("boot", config: :with_boot_canary, host: nil).tap do |output|
       assert_match "First web container is healthy on 1.1.1.1, booting any other roles", output
@@ -391,7 +405,7 @@ class CliAppTest < CliTestCase
     stub_boot_state clash: "12345678", running: "123", expect: false
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
+    stub_readiness_confirm "no-healthcheck:running", expect: true
 
     run_command("boot", config: :with_roles, host: nil).tap do |output|
       assert_match "Waiting for the first healthy web container before booting workers on 1.1.1.3...", output
@@ -410,7 +424,7 @@ class CliAppTest < CliTestCase
     stub_boot_state clash: "12345678", running: "123", expect: false
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
+    stub_readiness_confirm "no-healthcheck:running", expect: true
 
     run_command("boot", config: :with_role_boot, host: nil).tap do |output|
       assert_match "Waiting for the first healthy web container before booting workers on 1.1.1.3...", output
@@ -559,7 +573,7 @@ class CliAppTest < CliTestCase
     stub_boot_state clash: "12345678", running: "123", expect: false
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
+    stub_readiness_confirm "no-healthcheck:running", expect: true
 
     run_command("boot", config: :with_only_workers, host: nil).tap do |output|
       assert_match /First workers container is healthy on 1.1.1.\d, booting any other roles/, output

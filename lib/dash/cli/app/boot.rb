@@ -101,13 +101,15 @@ class Dash::Cli::App::Boot
     # on the host that streams its progress back rather than being polled from here once
     # per attempt. The poller asks for the wait, and — only for an unchecked container it
     # has just let through its readiness delay — for a plain confirming read.
+    #
+    # Neither capture suppresses a non-zero exit: a status that cannot be read is a broken
+    # command, and it has always failed the boot on the spot rather than being waited out.
     def readiness_status(mode, seconds_left = nil)
       if mode == :confirm
         capture_with_info(*app.status(version: version))
       else
         capture_with_info *app.wait_for_ready(version: version, timeout: seconds_left),
-          interaction_handler: Dash::Cli::Healthcheck::ProgressReporter.new,
-          raise_on_non_zero_exit: false
+          interaction_handler: Dash::Cli::Healthcheck::ProgressReporter.new
       end
     end
 

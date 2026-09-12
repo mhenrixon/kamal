@@ -62,11 +62,15 @@ class Dash::Commands::App < Dash::Commands::Base
 
   # Waits on the host for the container to reach a status the poller accepts, so a boot
   # pays one round trip for the wait however long the container takes to come up - the
-  # client-side poll paid one per attempt. Exits 0 with that status on stdout the moment
-  # it sees one of READY_STATUSES; otherwise it reports progress on stderr once a second
-  # and, at the deadline, prints the last status it saw and exits non-zero. Waiting through
-  # every other status is deliberate: docker reports a container `unhealthy` after three
-  # failed probes, which for an app slower than that is a state it recovers from.
+  # client-side poll paid one per attempt. Prints the status it stopped on to stdout: the
+  # moment it sees one of READY_STATUSES, or the last one it saw when the deadline passes.
+  # Progress goes to stderr once a second in between. Waiting through every other status is
+  # deliberate: docker reports a container `unhealthy` after three failed probes, which for
+  # an app slower than that is a state it recovers from.
+  #
+  # Reaching the deadline exits 0, because it is an answer - the poller phrases it. Only a
+  # status that could not be read at all exits non-zero, which is a broken command and
+  # SSHKit's to raise, exactly as it was when the read was a round trip of its own.
   def wait_for_ready(version:, timeout:)
     shell [
       "started=$(date +%s);",
@@ -74,7 +78,7 @@ class Dash::Commands::App < Dash::Commands::Base
       *readiness_probe(version: version),
       "case \"$status\" in #{READY_STATUSES.join("|")}) echo \"$status\"; exit 0;; esac;",
       "elapsed=$(( $(date +%s) - started ));",
-      "if [ \"$elapsed\" -ge #{timeout.to_i} ]; then echo \"$status\"; exit 1; fi;",
+      "if [ \"$elapsed\" -ge #{timeout.to_i} ]; then echo \"$status\"; exit 0; fi;",
       "echo \"#{READINESS_PROGRESS_PREFIX} $elapsed $(( #{timeout.to_i} - elapsed )) $status\" 1>&2;",
       "sleep 1;",
       "done"
@@ -142,13 +146,16 @@ class Dash::Commands::App < Dash::Commands::Base
 
   private
     # The same two readiness sources #status and #health_probe cover, read into `$status`
-    # so the loop around them is the same either way. Both swallow their own stderr: the
-    # wait's stderr is the progress channel, and nothing else may appear on it.
+    # so the loop around them is the same either way. They differ in what a non-zero exit
+    # means. A probe that exits non-zero IS the answer "not ready", so its output is
+    # discarded and the loop goes on; an inspect that exits non-zero is no answer at all -
+    # docker is unreachable or the container is gone - so it takes the whole command down
+    # with it, with docker's complaint on stderr for SSHKit to put in the exception.
     def readiness_probe(version:)
       if role.healthcheck&.exec?
         [ "if", *health_probe(version: version), ">/dev/null 2>&1;", "then status=healthy;", "else status=\"#{EXEC_PROBE_FAILED}\";", "fi;" ]
       else
-        [ "status=$({", *status(version: version), ";} 2>/dev/null);" ]
+        [ "status=#{substitute(*status(version: version))} || exit $?;" ]
       end
     end
 

@@ -513,7 +513,6 @@ class CliProxyTest < CliTestCase
       .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
     stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("upgrade", "-y").tap do |output|
@@ -553,7 +552,6 @@ class CliProxyTest < CliTestCase
       .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
     stub_readiness_wait "no-healthcheck:running", expect: true
-    stub_readiness_confirm "no-healthcheck:running"
     stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("upgrade", "--rolling", "-y",).tap do |output|
