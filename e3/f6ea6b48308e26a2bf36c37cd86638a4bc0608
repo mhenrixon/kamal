@@ -1,0 +1,60 @@
+test/cli/cli_test_case.rb
+  s_30d1466dd9393f::t_bd73630642b444 50-56,58-61
+  s_30d1466dd9393f::t_372636417f8046 68-72,75-80,85-87,92-93,100-103
+  s_30d1466dd9393f::t_bb0cb036790779 62,64,66-67,73-74,94-99,104-105
+  s_30d1466dd9393f::t_2d088585029e9c 57
+  s_30d1466dd9393f::t_c24171178b010f 63,65,81-84,88-91
+lib/dash/cli/app/boot.rb
+  s_30d1466dd9393f::t_8e5aa51237c3db 2-6,77-81,91,99-111
+  s_30d1466dd9393f::t_20e0e4f6d4647a 83
+test/cli/main_test.rb
+  s_30d1466dd9393f::t_ccd7ed665e19f2 461-463
+  s_30d1466dd9393f::t_3947d2e1901b51 454-456,458
+  s_30d1466dd9393f::t_d2f3a754e40973 482
+test/commands/app_test.rb
+  s_30d1466dd9393f::t_0a4279d469fa3d 75-102
+test/cli/healthcheck/progress_reporter_test.rb
+  s_30d1466dd9393f::t_408fc85d77544c 1-43
+lib/dash/commands/app.rb
+  s_30d1466dd9393f::t_a0a59cdf51b9f2 63-73,75-83,145-146,148-154
+  s_30d1466dd9393f::t_20e0e4f6d4647a 74,144,147
+lib/dash/commands/base.rb
+  s_30d1466dd9393f::t_6f40a4f11f778b 13-28
+docs/app/views/docs/pages/worker_roles.rb
+  s_30d1466dd9393f::t_09e2306ab8e876 125-126,302-303,307-310
+lib/dash/cli/healthcheck/progress_reporter.rb
+  s_30d1466dd9393f::t_8cd3219fcc62b9 1-35
+lib/dash/cli/healthcheck/poller.rb
+  s_30d1466dd9393f::t_0ca730e77d935a 6-11,18,29,64-65,67-71
+lib/dash/configuration/docs/role.yml
+  s_30d1466dd9393f::t_09e2306ab8e876 110-111,118-119,123-125
+test/cli/proxy_test.rb
+  s_30d1466dd9393f::t_d2f3a754e40973 515-517,555-557
+test/cli/healthcheck/poller_test.rb
+  s_30d1466dd9393f::t_8fa69b21e3ec8c 115-150,152-165
+  s_30d1466dd9393f::t_b05ef8d6b7eb60 151
+test/cli/app_test.rb
+  s_30d1466dd9393f::t_627089cab98424 301-302,393-394,412-413,467,489-490,507,536,561-562
+  s_30d1466dd9393f::t_236299a48800a7 91-166,170-177,1224-1230
+  s_30d1466dd9393f::t_2d088585029e9c 1114-1116,1118-1119
+  s_30d1466dd9393f::t_6ac85555dca5f0 930
+  s_30d1466dd9393f::t_22013c83ac1955 24,46,361,378,1254
+  s_30d1466dd9393f::t_4eda11776869e9 167-169
+  s_30d1466dd9393f::t_b776b2c17c0a5b 1090-1092,1095,1098,1108-1109,1112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.5.2",
+  "base_commit_sha": "e3f6ea6b48308e26a2bf36c37cd86638a4bc0608",
+  "prompts": {},
+  "sessions": {
+    "s_30d1466dd9393f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "678ecd7e-5607-4caf-b912-c8c0a26a493a",
+        "model": "claude-opus-5"
+      },
+      "human_author": "mhenrixon <mikael@mhenrixon.com>"
+    }
+  }
+}
