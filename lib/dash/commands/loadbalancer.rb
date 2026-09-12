@@ -199,18 +199,16 @@ class Dash::Commands::Loadbalancer < Dash::Commands::Base
     # Verified on the volume existing, not on a container being gone - the loadbalancer
     # replaces no legacy container, so this is the only signal its bridge has. That makes
     # it foolable in one specific way: if `dash-loadbalancer-config` comes to exist before
-    # this bridge ever runs on a host - e.g. `dash proxy reboot` invoked directly against a
-    # dedicated LB host that has never been through `dash proxy boot`, since
-    # Dash::Cli::Proxy::LoadbalancerReboot#run boots the container without calling this
-    # bridge first - the marker is written despite the legacy volume's routing table and
-    # ACME cache never having been copied. That gap predates this fold: on `main`,
-    # `copy_legacy_config_volume`'s own guard (`volume_exists(new) || ...`) already skips
-    # the copy for good in that state, silently, every deploy - this only turns a
-    # per-deploy re-check into a cached one. Closing it means routing `reboot` through the
-    # same bridge, a `Dash::Cli::Proxy::LoadbalancerReboot` change, out of scope here
-    # (zoolutions/dash#160 is `boot`'s round trips) - tracked in zoolutions/dash#168.
-    # Recovery today is the same either way: copy the legacy volume's contents over by
-    # hand, then remove .legacy-renamed under this host's loadbalancer directory so this
+    # this bridge ever runs on a host, the marker is written despite the legacy volume's
+    # routing table and ACME cache never having been copied. The fix is upstream of the
+    # heuristic rather than in it - every path that can create the container, and with it
+    # the volume `docker run --volume` auto-creates empty, runs the bridge first:
+    # `boot`, both reboots (Dash::Cli::Proxy::Reboot, Dash::Cli::Proxy::LoadbalancerReboot)
+    # and `dash proxy loadbalancer start` (zoolutions/dash#168).
+    #
+    # If a host is somehow in that state anyway - an operator's own `docker run`, a
+    # volume created by hand - recovery is to copy the legacy volume's contents over,
+    # then remove .legacy-renamed under this host's loadbalancer directory so this
     # re-evaluates.
     def mark_legacy_renamed
       combine \

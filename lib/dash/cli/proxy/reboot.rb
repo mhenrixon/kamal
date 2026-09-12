@@ -37,7 +37,12 @@ class Dash::Cli::Proxy::Reboot
 
     def replace_container
       execute *proxy.ensure_proxy_directory
-      execute *proxy.ensure_apps_config_directory
+      # Before the new container - and the new config volume `docker run
+      # --volume` would otherwise create empty - exists: bring a host still on
+      # pre-rename identity across. Carries the apps-config mkdir this reboot
+      # paid a round trip for anyway, so the bridge costs none here either
+      # (zoolutions/dash#168, see Dash::Cli::Proxy::LegacyRename).
+      execute *proxy.prepare_boot
       sync_proxy_secrets
 
       if proxy.port_holder?

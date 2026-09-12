@@ -74,6 +74,21 @@ class ActiveSupport::TestCase
     # when it is on PATH, so a developer who has it installed would see different advice
     # than CI does. Pin it off; test/dockerfile/hadolint_test.rb turns it back on.
     Dash::Dockerfile::Hadolint.stubs(:available?).returns(false)
+
+    # Fourth path, this one internal to the suite: a CLI test that runs a command with
+    # --quiet or -v leaves that verbosity behind on BOTH the DASH singleton and SSHKit's
+    # global output_verbosity (Cli::Base#initialize_commander, then
+    # Commander#configure_sshkit_with). Nothing restores either between tests -
+    # Commander#reset would, but only `dash alias` calls it - so
+    # `dash app stale_containers --quiet` in test/cli/app_test.rb silences every later
+    # SSHKit.config.output.info in the process. Whether that mattered depended on the
+    # seed: CI seed 36230 put it ahead of
+    # test/cli/healthcheck/progress_reporter_test.rb and took three of its assertions
+    # down to "", while the other three Ruby versions' seeds passed the same commit.
+    # Pin the default so the order cannot decide; a test that wants another verbosity
+    # still sets it itself.
+    DASH.verbosity = :info
+    SSHKit.config.output_verbosity = :info
   end
 
   # Dash::Commands::Base#ensure_run_directory — the one-shot .kamal -> .dash
