@@ -107,22 +107,22 @@ servers:
     # A `healthcheck` cannot be combined with `health-*` keys under `options`.
     #
     # `exec` is the escape hatch for an image whose HEALTHCHECK you cannot change,
-    # or for an emergency override without a rebuild. Kamal `docker exec`s it from
-    # the deploy host on every poll and gates the deploy on the exit code — no HTTP
+    # or for an emergency override without a rebuild. Dash `docker exec`s it on the
+    # deploy host once a second and gates the deploy on the exit code — no HTTP
     # server and no published port needed, and unlike `cmd` it may use `${...}`,
     # which is quoted through to the container. It is strictly worse than `cmd` in
     # the general case, so reach for it only when `cmd` is not available:
     #
     #   - deploy-time only. Docker never runs it, so `docker ps` never shows
     #     `(healthy)` and `docker inspect` keeps no probe history.
-    #   - each poll costs an SSH round trip plus a process spawn (~100-300ms), which
-    #     rules out sub-second polling.
+    #   - each attempt costs a process spawn on the host (the whole wait is one SSH
+    #     round trip, so the cost does not grow with how long the boot takes).
     #   - nothing outside a deploy ever runs it.
     #
     # `exec` replaces docker's healthcheck rather than configuring it, so it cannot
-    # be combined with `cmd`, `port`, `path`, or any of the duration keys. Polling
-    # follows the deploy's own backoff and gives up at `deploy_timeout`; a probe that
-    # never exits zero fails the boot and leaves the old container running.
+    # be combined with `cmd`, `port`, `path`, or any of the duration keys. The wait
+    # gives up at `deploy_timeout`; a probe that never exits zero fails the boot and
+    # leaves the old container running.
     #
     # A non-proxied role with neither a `healthcheck` nor a `health-cmd` option
     # warns on every deploy, because the readiness delay is the only thing standing

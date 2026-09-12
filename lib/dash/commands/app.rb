@@ -60,6 +60,27 @@ class Dash::Commands::App < Dash::Commands::Base
     docker :exec, container_name(version), *shell([ role.healthcheck.exec ])
   end
 
+  # Waits on the host for the container to reach a status the poller accepts, so a boot
+  # pays one round trip for the wait however long the container takes to come up - the
+  # client-side poll paid one per attempt. Exits 0 with that status on stdout the moment
+  # it sees one of READY_STATUSES; otherwise it reports progress on stderr once a second
+  # and, at the deadline, prints the last status it saw and exits non-zero. Waiting through
+  # every other status is deliberate: docker reports a container `unhealthy` after three
+  # failed probes, which for an app slower than that is a state it recovers from.
+  def wait_for_ready(version:, timeout:)
+    shell [
+      "started=$(date +%s);",
+      "while true; do",
+      *readiness_probe(version: version),
+      "case \"$status\" in #{READY_STATUSES.join("|")}) echo \"$status\"; exit 0;; esac;",
+      "elapsed=$(( $(date +%s) - started ));",
+      "if [ \"$elapsed\" -ge #{timeout.to_i} ]; then echo \"$status\"; exit 1; fi;",
+      "echo \"#{READINESS_PROGRESS_PREFIX} $elapsed $(( #{timeout.to_i} - elapsed )) $status\" 1>&2;",
+      "sleep 1;",
+      "done"
+    ]
+  end
+
   def stop(version: nil)
     pipe \
       version ? container_id_for_version(version) : current_running_container_id,
@@ -120,6 +141,17 @@ class Dash::Commands::App < Dash::Commands::Base
   end
 
   private
+    # The same two readiness sources #status and #health_probe cover, read into `$status`
+    # so the loop around them is the same either way. Both swallow their own stderr: the
+    # wait's stderr is the progress channel, and nothing else may appear on it.
+    def readiness_probe(version:)
+      if role.healthcheck&.exec?
+        [ "if", *health_probe(version: version), ">/dev/null 2>&1;", "then status=healthy;", "else status=\"#{EXEC_PROBE_FAILED}\";", "fi;" ]
+      else
+        [ "status=$({", *status(version: version), ";} 2>/dev/null);" ]
+      end
+    end
+
     def latest_image_id
       docker :image, :ls, *argumentize("--filter", "reference=#{config.latest_image}"), "--format", "'{{.ID}}'"
     end

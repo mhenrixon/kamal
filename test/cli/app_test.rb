@@ -21,9 +21,7 @@ class CliAppTest < CliTestCase
 
     stub_boot_state clash: "12345678", running: "123"
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
-      .returns("12345678") # running version
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("boot").tap do |output|
       assert_match /Renaming container .* to .* as already deployed on 1.1.1.1/, output # Rename
@@ -45,9 +43,7 @@ class CliAppTest < CliTestCase
 
     stub_boot_state clash: "12345678", running: "latest"
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
-      .returns("12345678")
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("boot").tap do |output|
       renamed = output[/docker rename app-web-latest (app-web-latest_replaced_[0-9a-f]{16})/, 1]
@@ -90,6 +86,93 @@ class CliAppTest < CliTestCase
       assert_match %r{\[web\] Booted app version latest" >> \.dash/app-audit\.log && mkdir -p \.dash/apps/app/env/roles}, output
       assert_match %r{Tagging dhh/app:latest as the latest image" >> \.dash/app-audit\.log && docker tag dhh/app:latest dhh/app:latest}, output
     end
+  end
+
+  # `docker run --detach` prints the id of the container it started, so the proxy target is
+  # read out of the run itself. The 12 characters are what `docker container ls --quiet`
+  # used to print, which is the target dash-proxy has always been handed.
+  test "boot takes the proxy target from the run rather than asking docker for the id again" do
+    stub_running
+    stub_run_capture id: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+    captures = recorded_captures do
+      run_command("boot").tap do |output|
+        assert_match 'dash-proxy deploy app-web --target="0123456789ab:80"', output
+      end
+    end
+
+    assert_equal 0, captures.count { |capture| capture.end_with?("'name=^app-web-latest$' --quiet") },
+      "the container id read should be gone: #{captures.inspect}"
+  end
+
+  # The readiness wait blocks on the host until the container is ready or the deadline
+  # passes, so a healthchecked role pays one round trip for it however long the container
+  # takes - the client-side poll paid one per attempt, and the slower the boot the more.
+  test "a healthchecked role without a proxy pays one round trip for the whole wait" do
+    stub_running
+    stub_readiness_wait "healthy", expect: true
+
+    captures = recorded_captures do
+      run_command("boot", config: :with_readiness_sources, host: "1.1.1.5").tap do |output|
+        assert_match /Container is healthy!/, output
+      end
+    end
+
+    assert_equal 1, captures.count { |capture| readiness_wait_command?(capture) }, captures.inspect
+    assert_equal 0, captures.count { |capture| status_read?(capture) }, captures.inspect
+  end
+
+  # An unchecked container is accepted on its readiness delay alone, and the delay is spent
+  # on the laptop - so it still costs one fresh read afterwards. That is the one readiness
+  # round trip the host-side wait cannot fold away.
+  test "an unchecked role waits on the host, then confirms once after the readiness delay" do
+    stub_running
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:running", expect: true
+
+    captures = recorded_captures do
+      run_command("boot", config: :with_readiness_sources, host: "1.1.1.3").tap do |output|
+        assert_match /workers has no healthcheck/, output
+        assert_match /Container is healthy!/, output
+      end
+    end
+
+    assert_equal 1, captures.count { |capture| readiness_wait_command?(capture) }, captures.inspect
+    assert_equal 1, captures.count { |capture| status_read?(capture) }, captures.inspect
+  end
+
+  # The wait runs for as long as it may take, so the progress an operator sees has to come
+  # back over that same command while it is still running - and the deadline has to reach
+  # the poller as a status rather than as a failed command, or the poller never gets to
+  # phrase the error.
+  test "the readiness wait streams its progress back and lets the poller judge the result" do
+    stub_running
+    options = nil
+    stub_capture { |args| readiness_wait?(args).tap { |matched| options = args.grep(Hash).last if matched } }.returns("healthy")
+
+    run_command("boot", config: :with_readiness_sources, host: "1.1.1.5")
+
+    assert_instance_of Dash::Cli::Healthcheck::ProgressReporter, options[:interaction_handler]
+    assert_equal false, options[:raise_on_non_zero_exit]
+  end
+
+  # The host loop only returns early for a status the poller accepts, so anything else it
+  # returns means the deadline passed - and the poller must not spend another wait on it.
+  test "a readiness wait that hits its deadline fails once, with the status it last saw" do
+    Thread.report_on_exception = false
+    stub_running
+    Dash::Configuration.any_instance.stubs(:deploy_timeout).returns(0)
+    stub_readiness_wait "starting"
+
+    error = nil
+    captures = recorded_captures do
+      error = assert_raises(SSHKit::Runner::ExecuteError) { run_command("boot", config: :with_readiness_sources, host: "1.1.1.5") }
+    end
+
+    assert_match "container not ready after 0 seconds (starting)", error.message
+    assert_equal 1, captures.count { |capture| readiness_wait_command?(capture) }, captures.inspect
+  ensure
+    Thread.report_on_exception = true
   end
 
   test "boot uses group strategy when specified" do
@@ -215,9 +298,8 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:running"
 
     run_command("boot", config: :with_boot_canary, host: nil).tap do |output|
       assert_match "First web container is healthy on 1.1.1.1, booting any other roles", output
@@ -276,9 +358,7 @@ class CliAppTest < CliTestCase
 
     stub_boot_state clash: "12345678", running: "123"
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
-      .returns("12345678") # running version
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("boot", config: :with_assets).tap do |output|
       assert_match "docker tag dhh/app:latest dhh/app:latest", output
@@ -295,9 +375,7 @@ class CliAppTest < CliTestCase
 
     stub_boot_state clash: "12345678", running: "123"
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-latest$'", "--quiet")
-      .returns("12345678") # running version
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("boot", config: :with_env_tags).tap do |output|
       assert_match "docker tag dhh/app:latest dhh/app:latest", output
@@ -312,9 +390,8 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:running"
 
     run_command("boot", config: :with_roles, host: nil).tap do |output|
       assert_match "Waiting for the first healthy web container before booting workers on 1.1.1.3...", output
@@ -332,9 +409,8 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:running"
 
     run_command("boot", config: :with_role_boot, host: nil).tap do |output|
       assert_match "Waiting for the first healthy web container before booting workers on 1.1.1.3...", output
@@ -388,9 +464,7 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("unhealthy").at_least_once # workers health check
+    stub_readiness_wait "unhealthy", expect: true
 
     run_command("boot", config: :with_roles, host: nil, allow_execute_error: true).tap do |output|
       assert_match "Waiting for the first healthy web container before booting workers on 1.1.1.3...", output
@@ -412,9 +486,8 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running", "no-healthcheck:stopped").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:stopped", expect: true
 
     run_command("boot", config: :with_roles, host: "1.1.1.3", allow_execute_error: true).tap do |output|
       assert_match "ERROR Failed to boot workers on 1.1.1.3", output
@@ -431,9 +504,7 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("unhealthy") # workers health check
+    stub_readiness_wait "unhealthy"
 
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", "xargs docker logs --timestamps 2>&1")
@@ -462,9 +533,7 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:stopped") # workers has no healthcheck, container just died
+    stub_readiness_wait "no-healthcheck:stopped"
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
       .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", "xargs docker logs --timestamps 2>&1")
@@ -489,9 +558,8 @@ class CliAppTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_readiness_confirm "no-healthcheck:running"
 
     run_command("boot", config: :with_only_workers, host: nil).tap do |output|
       assert_match /First workers container is healthy on 1.1.1.\d, booting any other roles/, output
@@ -859,6 +927,7 @@ class CliAppTest < CliTestCase
   test "boot proxy" do
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
+    stub_run_capture
 
     run_command("boot", config: :with_proxy).tap do |output|
       assert_match /Renaming container .* to .* as already deployed on 1.1.1.1/, output # Rename
@@ -1018,11 +1087,15 @@ class CliAppTest < CliTestCase
     assert @executions.any? { |args| args.first == ".dash/hooks/post-app-stop" }
   end
 
+  # The probe runs inside the host-side wait now, once a second there rather than once per
+  # round trip from here — but it is still the same `docker exec`, and its exit code is
+  # still the whole gate.
   test "boot gates a role with an exec healthcheck on the probe's exit code" do
     stub_running
+    stub_readiness_wait "healthy", expect: true
 
     run_command("boot", config: :with_readiness_sources, host: "1.1.1.8").tap do |output|
-      assert_match "docker exec app-prober-latest sh -c 'bin/ready-check'", output
+      assert_match %r{if docker exec app-prober-latest sh -c '\\''bin/ready-check'\\'' >/dev/null 2>&1}, output
       assert_match /Container is healthy!/, output
       assert_no_match %r{--health-cmd}, output
     end
@@ -1032,18 +1105,18 @@ class CliAppTest < CliTestCase
     Dash::Configuration.any_instance.stubs(:deploy_timeout).returns(0)
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
     stub_boot_state clash: "12345678", running: "123", expect: false
+    stub_run_capture
+    stub_readiness_wait Dash::Commands::Base::EXEC_PROBE_FAILED
 
     @executions = []
-    SSHKit::Backend::Abstract.any_instance.stubs(:execute)
-      .with { |*args| @executions << args; !args.join(" ").include?("bin/ready-check") }
-    SSHKit::Backend::Abstract.any_instance.stubs(:execute)
-      .with { |*args| args.join(" ").include?("bin/ready-check") }
-      .raises(SSHKit::Command::Failed.new("probe failed"))
+    SSHKit::Backend::Abstract.any_instance.stubs(:execute).with { |*args| @executions << args; true }
 
-    stderred { run_command("boot", config: :with_readiness_sources, host: "1.1.1.8", allow_execute_error: true) }
+    captures = recorded_captures do
+      stderred { run_command("boot", config: :with_readiness_sources, host: "1.1.1.8", allow_execute_error: true) }
+    end
 
-    assert @executions.any? { |args| args.join(" ").include?("sh -c 'bin/ready-check'") }, "expected the probe to have run"
-    assert @executions.any? { |args| args.join(" ").include?("docker run") }, "expected the new container to have booted"
+    assert captures.any? { |capture| capture.include?("bin/ready-check") }, "expected the probe to have run"
+    assert captures.any? { |capture| capture.include?("docker run") }, "expected the new container to have booted"
     assert @executions.none? { |args| args.join(" ").include?("app-prober-123") }, "expected the old container to be left alone"
   end
 
@@ -1148,6 +1221,15 @@ class CliAppTest < CliTestCase
         .returns("12345678")
     end
 
+    def readiness_wait_command?(capture)
+      capture.include?(Dash::Commands::Base::READINESS_PROGRESS_PREFIX)
+    end
+
+    # The plain status read, which the wait command also embeds - hence the exclusion.
+    def status_read?(capture)
+      capture.include?(Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT) && !readiness_wait_command?(capture)
+    end
+
     def run_command(*command, config: :with_accessories, host: "1.1.1.1", allow_execute_error: false)
       stdouted do
         Dash::Cli::App.start([ *command, "-c", "test/fixtures/deploy_#{config}.yml", *([ "--hosts", host ] if host) ])
@@ -1169,6 +1251,7 @@ class CliAppTest < CliTestCase
 
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("123") # container id
       stub_boot_state clash: nil, running: "123", expect: false
+      stub_run_capture
     end
 
     # The one capture Dash::Cli::App::Boot makes before it starts anything: the id of a
