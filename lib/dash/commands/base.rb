@@ -10,6 +10,22 @@ module Dash::Commands
 
     DOCKER_HEALTH_STATUS_FORMAT = "'{{if .State.Health}}{{.State.Health.Status}}{{else}}#{NO_HEALTHCHECK}:{{.State.Status}}{{end}}'"
 
+    # The statuses a boot accepts as ready. Dash::Cli::Healthcheck::Poller decides what a
+    # status means; Dash::Commands::App#wait_for_ready only decides when to stop looking,
+    # and it stops on exactly these. The two must agree: a status the host loop returned
+    # early for that the poller would not accept fails a boot the old client-side poll
+    # would have waited out.
+    READY_STATUSES = [ "healthy", "#{NO_HEALTHCHECK}:running" ].freeze
+
+    # What a `healthcheck: exec:` probe reports when it exits non-zero. Produced by the
+    # host-side wait, read back by the poller, so it is a wire format, not a message.
+    EXEC_PROBE_FAILED = "exec probe exited non-zero"
+
+    # The line #wait_for_ready prints to stderr on every attempt, read back by
+    # Dash::Cli::Healthcheck::ProgressReporter. stderr, because a capture returns stdout
+    # alone - which keeps the captured value the final status and nothing else.
+    READINESS_PROGRESS_PREFIX = "dash-readiness"
+
     attr_accessor :config
 
     def initialize(config)

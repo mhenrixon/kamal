@@ -512,9 +512,8 @@ class CliProxyTest < CliTestCase
       .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
       .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("upgrade", "-y").tap do |output|
       assert_match "Upgrading proxy on 1.1.1.1,1.1.1.2,1.1.1.3,1.1.1.4...", output
@@ -552,9 +551,8 @@ class CliProxyTest < CliTestCase
       .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
       .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-latest$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # workers health check
+    stub_readiness_wait "no-healthcheck:running", expect: true
+    stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
     run_command("upgrade", "--rolling", "-y",).tap do |output|
       %w[1.1.1.1 1.1.1.2 1.1.1.3 1.1.1.4].each do |host|

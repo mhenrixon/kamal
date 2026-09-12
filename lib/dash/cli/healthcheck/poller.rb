@@ -3,13 +3,19 @@ module Dash::Cli::Healthcheck::Poller
 
   NO_HEALTHCHECK = Dash::Commands::Base::NO_HEALTHCHECK
 
+  # The wait itself happens on the host now (Dash::Commands::App#wait_for_ready), which
+  # returns the moment the status is one this poller accepts and otherwise waits out the
+  # deadline it is given. So the block is called once for the wait - and once more only to
+  # confirm an unchecked container is still running after its readiness delay. Every
+  # decision below is the one the client-side poll made, in the same words; what shrank is
+  # the number of round trips it took to reach them.
   def wait_for_healthy(role:, &block)
     attempt = 1
     timeout_at = Time.now + DASH.config.deploy_timeout
     readiness_delay = role.readiness_delay
 
     begin
-      status = block.call
+      status = block.call(:wait, seconds_left(timeout_at))
 
       if unchecked?(status)
         ensure_no_healthcheck_drift(role, status)
@@ -20,7 +26,7 @@ module Dash::Cli::Healthcheck::Poller
           # Wait for the readiness delay and confirm it is still running
           if readiness_delay > 0
             sleep readiness_delay
-            status = block.call
+            status = block.call(:confirm)
             ensure_no_healthcheck_drift(role, status)
           end
         end
@@ -55,8 +61,14 @@ module Dash::Cli::Healthcheck::Poller
       status.to_s.delete_prefix("#{NO_HEALTHCHECK}:")
     end
 
+    # Shared with the host-side wait, which stops looking on exactly these - see
+    # Dash::Commands::Base::READY_STATUSES for why the two have to agree.
     def acceptable?(status)
-      status == "healthy" || (unchecked?(status) && docker_state(status) == "running")
+      Dash::Commands::Base::READY_STATUSES.include?(status)
+    end
+
+    def seconds_left(timeout_at)
+      [ (timeout_at - Time.now).ceil, 0 ].max
     end
 
     # The config asked docker to probe this container and docker is not probing it — the flags

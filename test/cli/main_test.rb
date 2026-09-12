@@ -451,14 +451,15 @@ class CliMainTest < CliTestCase
       SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
         .with { |*args| args.join(" ").include?("'name=^app-#{role}-123$'") && args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
         .returns("\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\nversion-to-rollback\n").at_least_once
-      SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
+      # Read by #container_available? before the rollback starts; the boot's own endpoint
+      # read is gone - it comes out of the run now.
+      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
         .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-#{role}-123$'", "--quiet")
-        .returns("version-to-rollback\n").at_least_once
+        .returns("version-to-rollback\n")
     end
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-workers-123$'", "--quiet", "|", :xargs, :docker, :inspect, "--format", Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
-      .returns("no-healthcheck:running").at_least_once # health check
+    stub_run_capture # the proxy target, printed by the run itself
+    stub_readiness_wait "no-healthcheck:running", expect: true # workers
 
     Dash::Commands::Hook.any_instance.stubs(:hook_exists?).returns(true)
 
@@ -477,9 +478,7 @@ class CliMainTest < CliTestCase
     SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
       .with { |*args| args.join(" ").include?(Dash::Commands::App::BOOT_STATE_SEPARATOR) }
       .returns("\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n").at_least_once # no clash, nothing running
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^app-web-123$'", "--quiet")
-      .returns("123").at_least_once
+    stub_run_capture # the proxy target, printed by the run itself
 
     run_command("rollback", "123").tap do |output|
       assert_match "docker run --detach --restart unless-stopped --name app-web-123", output

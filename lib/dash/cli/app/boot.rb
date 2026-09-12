@@ -1,4 +1,9 @@
 class Dash::Cli::App::Boot
+  # What `docker container ls --quiet` prints, and so what dash-proxy has always been
+  # handed as a target. `docker run --detach` prints the full 64-character id, so the
+  # target is its first twelve characters rather than a round trip of its own.
+  SHORT_CONTAINER_ID_LENGTH = 12
+
   attr_reader :host, :role, :version, :barrier, :sshkit, :cli
   delegate :execute, :capture_with_info, :capture_with_pretty_json, :info, :error, :upload!, to: :sshkit
   delegate :run_hook, to: :cli
@@ -69,9 +74,13 @@ class Dash::Cli::App::Boot
       execute *auditor.record_then("Booted app version #{version}", app.ensure_env_directory)
       upload! role.secrets_io(host), role.secrets_path, mode: "0600"
 
-      execute *app.run(hostname: hostname)
+      # `docker run --detach` prints the id of the container it just started, so the
+      # proxy target comes out of the run itself — asking docker for it again was a round
+      # trip spent re-reading something the host had already said.
+      container_id = capture_with_info(*app.run(hostname: hostname)).strip
+
       if running_proxy?
-        endpoint = capture_with_info(*app.container_id_for_version(version)).strip
+        endpoint = container_id[0, SHORT_CONTAINER_ID_LENGTH]
         raise Dash::Cli::BootError, "Failed to get endpoint for #{role} on #{host}, did the container boot?" if endpoint.empty?
 
         run_hook "pre-proxy-deploy", hosts: host.to_s, role: role.name
@@ -79,7 +88,7 @@ class Dash::Cli::App::Boot
         timing_healthy { execute *app.deploy(target: endpoint) }
         run_hook "post-proxy-deploy", hosts: host.to_s, role: role.name
       else
-        timing_healthy { Dash::Cli::Healthcheck::Poller.wait_for_healthy(role: role) { health_status } }
+        timing_healthy { Dash::Cli::Healthcheck::Poller.wait_for_healthy(role: role, &method(:readiness_status)) }
       end
     rescue => e
       error "Failed to boot #{role} on #{host}"
@@ -87,17 +96,21 @@ class Dash::Cli::App::Boot
       raise e
     end
 
-    # An exec probe is docker-invisible — the container declares no healthcheck, so
-    # `docker inspect` would only ever report its state. Poll the probe instead.
-    def health_status
-      role.healthcheck&.exec? ? exec_probe_status : capture_with_info(*app.status(version: version))
-    end
-
-    def exec_probe_status
-      execute *app.health_probe(version: version)
-      "healthy"
-    rescue SSHKit::Command::Failed
-      "exec probe exited non-zero"
+    # A role behind the proxy lets `dash-proxy deploy` block on the host until the
+    # container is healthy; a role without one now does the same, waiting in a shell loop
+    # on the host that streams its progress back rather than being polled from here once
+    # per attempt. The poller asks for the wait, and — only for an unchecked container it
+    # has just let through its readiness delay — for a plain confirming read.
+    #
+    # Neither capture suppresses a non-zero exit: a status that cannot be read is a broken
+    # command, and it has always failed the boot on the spot rather than being waited out.
+    def readiness_status(mode, seconds_left = nil)
+      if mode == :confirm
+        capture_with_info(*app.status(version: version))
+      else
+        capture_with_info *app.wait_for_ready(version: version, timeout: seconds_left),
+          interaction_handler: Dash::Cli::Healthcheck::ProgressReporter.new
+      end
     end
 
     # Every failed boot gets the container log, and the health probe history when the

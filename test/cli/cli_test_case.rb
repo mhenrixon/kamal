@@ -47,6 +47,62 @@ class CliTestCase < ActiveSupport::TestCase
       commands
     end
 
+    # Every command captured during the block, in order. Recorded by a matcher that never
+    # matches, so whichever stub was going to answer the capture still answers it — mocha
+    # tries expectations newest first, which is why this has to be set up last.
+    def recorded_captures
+      captures = []
+      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).with { |*args| captures << args.join(" "); false }
+
+      yield
+
+      captures
+    end
+
+    # The id `docker run --detach` prints, which a boot reads instead of asking docker for
+    # the container id in a round trip of its own.
+    def stub_run_capture(id: "123")
+      stub_capture { |args| docker_run?(args) }.returns(id)
+    end
+
+    # The readiness wait a boot runs on the host for a role without a proxy: one round trip
+    # that blocks there until the container is ready or the deadline passes. Each status is
+    # what one wait returned; the last repeats.
+    def stub_readiness_wait(*statuses, expect: false)
+      stub_capture(expect: expect) { |args| readiness_wait?(args) }.returns(*statuses)
+    end
+
+    # The plain status read the poller makes to confirm an unchecked container is still
+    # running after its readiness delay — the only readiness round trip left beside the wait.
+    def stub_readiness_confirm(*statuses, expect: false)
+      stub_capture(expect: expect) { |args| readiness_confirm?(args) }.returns(*statuses)
+    end
+
+    # Answers one kind of capture, and echoes the command it answered into the stream
+    # `stdouted` reads. The echo is the point: a stubbed capture is intercepted above the
+    # Printer and never printed, so without it every assertion about what a boot ran would
+    # go blind the moment that command moved from `execute` to `capture`.
+    def stub_capture(expect: false, &matcher)
+      backend = SSHKit::Backend::Abstract.any_instance
+      expectation = expect ? backend.expects(:capture_with_info) : backend.stubs(:capture_with_info)
+
+      expectation
+        .with { |*args| matcher.call(args).tap { |matched| SSHKit.config.output.info(args.join(" ")) if matched } }
+        .tap { |it| it.at_least_once if expect }
+    end
+
+    def docker_run?(args)
+      args.first == :docker && args[1] == :run
+    end
+
+    def readiness_wait?(args)
+      args.first == :sh && args.join(" ").include?(Dash::Commands::Base::READINESS_PROGRESS_PREFIX)
+    end
+
+    def readiness_confirm?(args)
+      args.first == :docker && args.include?(Dash::Commands::Base::DOCKER_HEALTH_STATUS_FORMAT)
+    end
+
     # A real `docker buildx build --progress=plain` stream, parsed by the same handler a
     # build attaches. Cheaper than a Docker daemon and it proves the wiring end to end.
     def build_report_from_fixture(name = "progress_plain_success")

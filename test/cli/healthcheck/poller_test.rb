@@ -112,6 +112,57 @@ class CliHealthcheckPollerTest < CliTestCase
     assert_match /container not ready after 0 seconds \(no-healthcheck:exited\)/, error.message
   end
 
+  # The wait happens on the host now, so the block is asked for it once - and only an
+  # unchecked container, which is accepted on its readiness delay alone, costs the one
+  # further read that confirms it is still running when the delay is up.
+  test "a healthchecked container is waited for once, with the time left to wait" do
+    modes = []
+
+    output = stdouted do
+      Dash::Cli::Healthcheck::Poller.wait_for_healthy(role: DASH.config.role(:listener)) do |mode, seconds_left|
+        modes << [ mode, seconds_left ]
+        "healthy"
+      end
+    end
+
+    assert_equal [ [ :wait, 30 ] ], modes
+    assert_match /Container is healthy!/, output
+  end
+
+  test "an unchecked container is waited for, then confirmed after the readiness delay" do
+    Dash::Cli::Healthcheck::Poller.expects(:sleep).with(7)
+    modes = []
+
+    stdouted do
+      Dash::Cli::Healthcheck::Poller.wait_for_healthy(role: DASH.config.role(:workers)) do |mode, _seconds_left|
+        modes << mode
+        "no-healthcheck:running"
+      end
+    end
+
+    assert_equal [ :wait, :confirm ], modes
+  end
+
+  # The host loop only returns early for a status this poller accepts, so a status that is
+  # not acceptable means the deadline has already passed. Spending a second wait on it
+  # would double what an operator waits for a boot that was never going to come up.
+  test "a wait that came back unacceptable is not waited for a second time" do
+    Dash::Cli::Healthcheck::Poller.expects(:sleep).never
+    DASH.config.stubs(:deploy_timeout).returns(0) # the wait spent it all
+    calls = 0
+
+    assert_raises Dash::Cli::Healthcheck::Error do
+      stdouted do
+        Dash::Cli::Healthcheck::Poller.wait_for_healthy(role: DASH.config.role(:listener)) do
+          calls += 1
+          "starting"
+        end
+      end
+    end
+
+    assert_equal 1, calls
+  end
+
   private
     # Yields each status in turn, then repeats the last one for every further poll.
     def wait_for_healthy(role_name, *statuses)

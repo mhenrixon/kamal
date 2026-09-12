@@ -122,8 +122,8 @@ class Views::Docs::Pages::WorkerRoles < DocsUI::Page
       md <<~'MD'
         Read it against the boot sequence: docker starts probing five seconds
         in, ignores failures for the first sixty (`start_period`), and marks the
-        container `healthy` on the first `200`. dash polls docker's verdict with
-        backoff until `deploy_timeout`, then stops the old container — which is
+        container `healthy` on the first `200`. dash waits on docker's verdict
+        until `deploy_timeout`, then stops the old container — which is
         told to stop and given `stop_timeout` seconds to finish. Three straight
         failures after the start period mark it `unhealthy`, and a boot that
         never reaches `healthy` fails with the container log and the probe
@@ -299,15 +299,15 @@ class Views::Docs::Pages::WorkerRoles < DocsUI::Page
         `healthcheck: exec:` is the escape hatch for an image whose
         `HEALTHCHECK` you cannot change, or for an emergency override with no
         rebuild. Instead of configuring docker's healthcheck, dash `docker
-        exec`s the probe from the deploy host on every poll and gates the boot
-        on its exit code. It may use `${...}` (quoted through to the container),
+        exec`s the probe on the deploy host once a second and gates the boot on
+        its exit code. It may use `${...}` (quoted through to the container),
         which `cmd` may not.
 
         It is strictly worse than `cmd` in the general case: deploy-time only
-        (docker never runs it, `docker ps` never shows `(healthy)`), an SSH round
-        trip plus a process spawn per poll, and it cannot be combined with
-        `cmd`, `port`, `path`, or any duration key. The trade-offs are spelled
-        out under `healthcheck` in the [Roles reference](/docs/role).
+        (docker never runs it, `docker ps` never shows `(healthy)`), a process
+        spawn on the host per attempt, and it cannot be combined with `cmd`,
+        `port`, `path`, or any duration key. The trade-offs are spelled out
+        under `healthcheck` in the [Roles reference](/docs/role).
       MD
       DocsUI::Code(<<~YAML, filename: "config/deploy.yml", lexer: :yaml)
         healthcheck:

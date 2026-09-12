@@ -60,6 +60,31 @@ class Dash::Commands::App < Dash::Commands::Base
     docker :exec, container_name(version), *shell([ role.healthcheck.exec ])
   end
 
+  # Waits on the host for the container to reach a status the poller accepts, so a boot
+  # pays one round trip for the wait however long the container takes to come up - the
+  # client-side poll paid one per attempt. Prints the status it stopped on to stdout: the
+  # moment it sees one of READY_STATUSES, or the last one it saw when the deadline passes.
+  # Progress goes to stderr once a second in between. Waiting through every other status is
+  # deliberate: docker reports a container `unhealthy` after three failed probes, which for
+  # an app slower than that is a state it recovers from.
+  #
+  # Reaching the deadline exits 0, because it is an answer - the poller phrases it. Only a
+  # status that could not be read at all exits non-zero, which is a broken command and
+  # SSHKit's to raise, exactly as it was when the read was a round trip of its own.
+  def wait_for_ready(version:, timeout:)
+    shell [
+      "started=$(date +%s);",
+      "while true; do",
+      *readiness_probe(version: version),
+      "case \"$status\" in #{READY_STATUSES.join("|")}) echo \"$status\"; exit 0;; esac;",
+      "elapsed=$(( $(date +%s) - started ));",
+      "if [ \"$elapsed\" -ge #{timeout.to_i} ]; then echo \"$status\"; exit 0; fi;",
+      "echo \"#{READINESS_PROGRESS_PREFIX} $elapsed $(( #{timeout.to_i} - elapsed )) $status\" 1>&2;",
+      "sleep 1;",
+      "done"
+    ]
+  end
+
   def stop(version: nil)
     pipe \
       version ? container_id_for_version(version) : current_running_container_id,
@@ -120,6 +145,28 @@ class Dash::Commands::App < Dash::Commands::Base
   end
 
   private
+    # The same two readiness sources #status and #health_probe cover, read into `$status`
+    # so the loop around them is the same either way. They differ in what a non-zero exit
+    # means. A probe that exits non-zero IS the answer "not ready", so its output is
+    # discarded and the loop goes on; an inspect that produced no answer at all - docker is
+    # unreachable, or the container is gone - takes the whole command down with it, with
+    # docker's complaint on stderr for SSHKit to put in the exception.
+    #
+    # An empty status is checked as well as the exit code, because the exit code alone is
+    # not portable: the read is a pipeline, so its status is xargs', and a `docker container
+    # ls` that failed pipes nothing. GNU xargs then runs `docker inspect` with no container
+    # and exits 123, but BSD and BusyBox xargs skip the utility entirely and exit 0. Both
+    # leave `$status` empty, and empty is not something a working `docker inspect --format`
+    # can print.
+    def readiness_probe(version:)
+      if role.healthcheck&.exec?
+        [ "if", *health_probe(version: version), ">/dev/null 2>&1;", "then status=healthy;", "else status=\"#{EXEC_PROBE_FAILED}\";", "fi;" ]
+      else
+        [ "status=#{substitute(*status(version: version))} || exit $?;",
+          "if [ -z \"$status\" ]; then echo \"could not read the status of #{container_name(version)}\" 1>&2; exit 1; fi;" ]
+      end
+    end
+
     def latest_image_id
       docker :image, :ls, *argumentize("--filter", "reference=#{config.latest_image}"), "--format", "'{{.ID}}'"
     end
