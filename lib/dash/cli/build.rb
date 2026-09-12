@@ -74,10 +74,8 @@ class Dash::Cli::Build < Dash::Cli::Base
 
   desc "pull", "Pull app image from registry onto servers"
   def pull
-    login_to_registry_remotely unless DASH.registry.local?
-
     forward_local_registry_port(DASH.hosts, **DASH.config.ssh.options) do
-      if (first_hosts = mirror_hosts).any?
+      if (first_hosts = login_and_mirror_hosts).any?
         #  Pull on a single host per mirror first to seed them
         say "Pulling image on #{first_hosts.join(", ")} to seed the #{"mirror".pluralize(first_hosts.count)}...", :magenta
         pull_on_hosts(first_hosts)
@@ -225,19 +223,28 @@ class Dash::Cli::Build < Dash::Cli::Base
       end
     end
 
-    def mirror_hosts
-      if DASH.app_hosts.many?
-        mirror_hosts = Concurrent::Hash.new
-        on(DASH.app_hosts) do |host|
-          first_mirror = capture_with_info(*DASH.builder.first_mirror).strip.presence
-          mirror_hosts[first_mirror] ||= host.to_s if first_mirror
-        rescue SSHKit::Command::Failed => e
-          raise unless e.message =~ /error calling index: reflect: slice index out of range/
-        end
-        mirror_hosts.values
-      else
-        []
+    # The registry login and the mirror probe share one round trip per host. The probe only
+    # earns its keep where there is more than one app host to seed, so on a single host the
+    # login goes on its own; a local registry needs no login and the fold is the probe alone.
+    #
+    # A host with no mirror configured fails the `docker info` half with docker's own index
+    # error, which is what "no mirror" looks like. Anything else still raises - a rejected
+    # login short-circuits the `&&` and comes back with docker's `unauthorized`/`denied`,
+    # which this rescue does not match.
+    def login_and_mirror_hosts
+      unless DASH.app_hosts.many?
+        login_to_registry_remotely unless DASH.registry.local?
+        return []
       end
+
+      mirror_hosts = Concurrent::Hash.new
+      on(DASH.app_hosts) do |host|
+        first_mirror = capture_with_info(*DASH.registry.login_then(DASH.builder.first_mirror)).strip.presence
+        mirror_hosts[first_mirror] ||= host.to_s if first_mirror
+      rescue SSHKit::Command::Failed => e
+        raise unless e.message =~ /error calling index: reflect: slice index out of range/
+      end
+      mirror_hosts.values
     end
 
     # Audit, clean and pull share one round trip. validate_image keeps its own: folding it

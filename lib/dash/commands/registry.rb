@@ -13,6 +13,20 @@ class Dash::Commands::Registry < Dash::Commands::Base
       "-p", sensitive(Dash::Utils.escape_shell_value(registry_config.password))
   end
 
+  # The login and whatever has to happen after it on the same host, in one round trip.
+  # `docker login` prints "Login Succeeded" to stdout, so its output is redirected away:
+  # a caller that captures this gets the folded command's answer and nothing else. A local
+  # registry needs no login at all, and the fold collapses to the commands alone.
+  #
+  # The credentials stay wrapped in sensitive(...) - composing keeps the array elements
+  # intact, so SSHKit redacts them here exactly as it does for a standalone login.
+  def login_then(*commands, registry_config: nil)
+    login = login(registry_config: registry_config)
+    login = [ *login, ">", "/dev/null" ] if login
+
+    combine login, *commands
+  end
+
   def logout(registry_config: nil)
     registry_config ||= config.registry
 
