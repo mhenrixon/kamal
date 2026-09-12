@@ -101,6 +101,16 @@ class Dash::Commands::Proxy < Dash::Commands::Base
   # first deploy. The subshell groups create-and-copy because `&&` and `||`
   # share precedence and associate left — without it a host that already has
   # the new volume would still run the copy over live state.
+  #
+  # The source volume is still mounted by the legacy container while this runs -
+  # deliberately, on every path (see Dash::Cli::Proxy::LegacyRename's step order), and
+  # safe because every writer into it renames into place: the routing table through
+  # writeFileAtomic, the dynamic domain and redirect state through their own temp +
+  # rename, the response cache through CreateTemp + Rename, and the ACME cache through
+  # autocert.DirCache. `cp -a` reads a complete file either way. Skew across files is
+  # possible and harmless - an unused certificate, or a route whose certificate reissues -
+  # and --recheck-targets-on-restore re-verifies the targets on the way back up
+  # (zoolutions/dash#169 review).
   def copy_legacy_config_volume(volume: Dash::Configuration::Proxy::CONFIG_VOLUME, legacy: Dash::Configuration::Proxy::LEGACY_CONFIG_VOLUME)
     copy_legacy_volume(legacy: legacy, volume: volume, image: proxy_image)
   end
