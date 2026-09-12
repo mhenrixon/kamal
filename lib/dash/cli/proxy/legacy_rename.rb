@@ -23,6 +23,13 @@
 # so a second deploy is a no-op. Nothing here removes the legacy network or
 # volume: an operator who wants them gone removes them by hand, and stage 3d
 # deletes this class outright.
+#
+# All three travel as one command (Dash::Commands::Proxy#prepare_boot), guarded on a
+# marker the host writes once it is verifiably past the rename - so a migrated host, and
+# a host installed fresh on 4.x that never had a kamal-proxy, run no docker command here
+# at all. The round trip itself is one the host already pays: the command carries the
+# apps-config `mkdir -p` too, which reads nothing the bridge writes. Stage 3d keeps the
+# mkdir and deletes the rest.
 class Dash::Cli::Proxy::LegacyRename
   attr_reader :host, :sshkit
   delegate :execute, to: :sshkit
@@ -33,26 +40,6 @@ class Dash::Cli::Proxy::LegacyRename
   end
 
   def run
-    bridge_network
-    adopt_config_volume
-    replace_legacy_container
+    execute *DASH.proxy(host).prepare_boot
   end
-
-  private
-    def bridge_network
-      execute *DASH.docker.connect_legacy_network_containers
-    end
-
-    def adopt_config_volume
-      execute *DASH.proxy(host).copy_legacy_config_volume
-    end
-
-    # The drain timeout the proxy is configured with, so a busy host is not cut
-    # off mid-request any more abruptly than a normal reboot would.
-    def replace_legacy_container
-      proxy = DASH.proxy(host)
-
-      execute *proxy.remove_legacy_container(timeout: DASH.config.drain_timeout)
-      execute *proxy.remove_legacy_holder_container
-    end
 end

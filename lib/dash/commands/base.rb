@@ -114,6 +114,13 @@ module Dash::Commands
         combine *commands, by: ";"
       end
 
+      # One subshell around an && chain. Composing two builders that each mix && and ||
+      # cannot be done flat - the operators share precedence and associate left, so the
+      # second builder's guards re-associate across the first one's.
+      def group(*commands)
+        [ "(", *combine(*commands), ")" ]
+      end
+
       def pipe(*commands)
         combine *commands, by: "|"
       end
@@ -150,11 +157,17 @@ module Dash::Commands
         any \
           volume_exists(volume),
           negate(volume_exists(legacy)),
-          [ "(", *combine(docker(:volume, :create, volume), copy_between_volumes(legacy, volume, image: image)), ")" ]
+          group(docker(:volume, :create, volume), copy_between_volumes(legacy, volume, image: image))
       end
 
       def negate(command)
         [ "!", *command ]
+      end
+
+      # The docker builders (network create, the stage-3c network bridge) for callers that
+      # compose them into a command of their own rather than executing them on their own.
+      def docker_commands
+        @docker_commands ||= Dash::Commands::Docker.new(config)
       end
 
       def volume_exists(name)

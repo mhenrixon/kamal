@@ -88,6 +88,54 @@ class CliProxyTest < CliTestCase
     end
   end
 
+  # zoolutions/dash#160. `Ensure dash-proxy` is the most expensive row of a deploy by
+  # round trips, and on a host that has already been through the stage-3c rename most of
+  # what it did was checking, again, that it had. Every round trip the boot spends on a
+  # proxy host is pinned here so a regression cannot land unnoticed - and so a deliberate
+  # reduction has to be explained in the commit that edits this list.
+  #
+  # On main this host paid eleven, plus the shared `docker network create`: the login,
+  # four separate bridge commands, the secrets file, the apps-config mkdir, start_or_run,
+  # and four captures (container id, config digest, boot config, image tag). The bridge is
+  # now one command the host skips inside, carried by the apps-config round trip it pays
+  # anyway, and the three reads about the running container are one inspect.
+  PROXY_BOOT_ROUND_TRIPS_PER_HOST = [
+    "docker login -u \"user\" -p \"pw\"",
+    "test -f .dash/proxy/.legacy-renamed || ( ... ) && mkdir -p .dash/proxy/apps-config",
+    "docker inspect dash-proxy --format '{{.Id}} {{.Config.Image}} ...'",
+    "echo $(cat .dash/proxy/options ...)",
+    "rm .dash/proxy/secrets.env",
+    "docker container start dash-proxy || echo $(cat .dash/proxy/options ...) | xargs docker run ..."
+  ].freeze
+
+  test "boot issues no round trip beyond the pinned per-host sequence" do
+    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("")
+    stub_proxy_state "dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION} " \
+      "#{Dash::Configuration::Proxy::Run.digest("")}"
+
+    round_trips = recorded_proxy_round_trips { run_command("boot", fixture: :simple) }
+
+    assert_equal [ "docker network create dash" ] * 2 + PROXY_BOOT_ROUND_TRIPS_PER_HOST * 2, round_trips,
+      "deploy_simple has two proxy hosts: the network sweep, then the pinned sequence twice"
+  end
+
+  # Nothing changes for a host still running kamal-proxy: the three bridge steps travel
+  # in the same command now, in the same documented order, behind the marker guard.
+  test "boot sends a still-legacy host the whole bridge, in its documented order" do
+    stub_no_proxy_drift
+
+    run_command("boot").tap do |output|
+      guard = output.index("test -f .dash/proxy/.legacy-renamed || (")
+      network = output.index("( docker network inspect kamal > /dev/null 2>&1")
+      volume = output.index("( docker volume inspect dash-proxy-config > /dev/null 2>&1")
+      container = output.index("( docker container inspect kamal-proxy > /dev/null 2>&1 && docker container stop")
+
+      assert guard && network && volume && container, output
+      assert guard < network, "the marker decides before any docker call: #{output}"
+      assert network < volume && volume < container, "the bridge keeps its documented order: #{output}"
+    end
+  end
+
   test "boot takes the server lock so concurrent destinations serialise on the shared proxy" do
     run_command("boot").tap do |output|
       assert_match "Acquiring the server lock...", output
@@ -320,9 +368,6 @@ class CliProxyTest < CliTestCase
 
   test "boot with port_holder ensures the holder before starting the proxy" do
     stub_no_proxy_drift
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
-      .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
     run_command("boot", fixture: :with_proxy_port_holder).tap do |output|
       assert_match "docker container start dash-proxy-net || docker run --name dash-proxy-net --network dash --detach --restart unless-stopped --publish 80:80 --publish 443:443 --log-opt max-size=10m ghcr.io/zoolutions/dash-proxy:#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION} dash-proxy hold on 1.1.1.1", output
@@ -332,12 +377,8 @@ class CliProxyTest < CliTestCase
 
   test "boot with matching digest does not reboot" do
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("")
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :container, :ls, "--all", "--filter", "'name=^dash-proxy$'", "--quiet", raise_on_non_zero_exit: false)
-      .returns("abc123")
-    SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format", Dash::Commands::Proxy::CONFIG_DIGEST_FORMAT, raise_on_non_zero_exit: false)
-      .returns(Dash::Configuration::Proxy::Run.digest(""))
+    stub_proxy_state "dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION} " \
+      "#{Dash::Configuration::Proxy::Run.digest("")}"
 
     run_command("boot").tap do |output|
       assert_match "docker container start dash-proxy ||", output
@@ -355,10 +396,7 @@ class CliProxyTest < CliTestCase
   test "boot old version" do
     Thread.report_on_exception = false
     stub_no_proxy_drift
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
-      .returns("v0.0.1")
-      .at_least_once
+    stub_proxy_state "dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:v0.0.1 #{Dash::Configuration::Proxy::Run.digest("")}"
 
     exception = assert_raises do
       run_command("boot").tap do |output|
@@ -375,10 +413,8 @@ class CliProxyTest < CliTestCase
   test "boot correct version" do
     Thread.report_on_exception = false
     stub_no_proxy_drift
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
-      .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
-      .at_least_once
+    stub_proxy_state "dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:" \
+      "#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION} #{Dash::Configuration::Proxy::Run.digest("")}"
 
     run_command("boot").tap do |output|
       assert_match "docker login", output
@@ -508,10 +544,6 @@ class CliProxyTest < CliTestCase
       .returns("12345678\n#{Dash::Commands::App::BOOT_STATE_SEPARATOR}\n12345678")
     stub_no_proxy_drift
 
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
-      .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
-
     stub_readiness_wait "no-healthcheck:running", expect: true
     stub_run_capture id: "12345678" # the proxy target, printed by the run itself
 
@@ -522,11 +554,9 @@ class CliProxyTest < CliTestCase
       assert_match "docker container stop dash-proxy", output
       assert_match "docker container prune --force --filter label=org.opencontainers.image.title=dash-proxy", output
       assert_match "docker image prune --all --force --filter label=org.opencontainers.image.title=dash-proxy", output
-      assert_match "/usr/bin/env mkdir -p .dash", output
       assert_match "docker network create dash", output
       assert_match "docker login -u [REDACTED] -p [REDACTED]", output
       assert_match "docker container start dash-proxy || echo $(cat .dash/proxy/options 2> /dev/null || echo \"--publish 80:80 --publish 443:443 --log-opt max-size=10m\") $(cat .dash/proxy/image 2> /dev/null || echo \"ghcr.io/zoolutions/dash-proxy\"):$(cat .dash/proxy/image_version 2> /dev/null || echo \"#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION}\") $(cat .dash/proxy/run_command 2> /dev/null || echo \"\") | xargs docker run --name dash-proxy --network dash --detach --restart unless-stopped --volume dash-proxy-config:/home/dash-proxy/.config/dash-proxy", output
-      assert_match "/usr/bin/env mkdir -p .dash", output
       assert_match %r{docker rename app-web-latest app-web-latest_replaced_.*}, output
       assert_match "Booted app version latest\" >> .dash/app-audit.log && mkdir -p .dash/apps/app/env/roles", output
       assert_match "Uploading \"\\n\" to .dash/apps/app/env/roles/web.env", output
@@ -534,7 +564,7 @@ class CliProxyTest < CliTestCase
       assert_match "docker exec dash-proxy dash-proxy deploy app-web --target=\"12345678:80\" --deploy-timeout=\"6s\" --drain-timeout=\"30s\" --buffer-requests --buffer-responses --log-request-header=\"Cache-Control\" --log-request-header=\"Last-Modified\" --log-request-header=\"User-Agent\"", output
       assert_match "docker container ls --all --filter 'name=^app-web-12345678$' --quiet | xargs docker stop", output
       assert_match "docker tag dhh/app:latest dhh/app:latest", output
-      assert_match "/usr/bin/env mkdir -p .dash", output
+      assert_match ") && mkdir -p .dash/proxy/apps-config", output
       assert_match "docker ps -q -a --filter label=service=app --filter label=destination= --filter label=role=web --filter status=created --filter status=exited --filter status=dead | tail -n +6 | while read container_id; do docker rm $container_id; done", output
       assert_match "docker image prune --force --filter label=service=app", output
       assert_match "Upgraded proxy on 1.1.1.1,1.1.1.2,1.1.1.3,1.1.1.4", output
@@ -546,10 +576,6 @@ class CliProxyTest < CliTestCase
 
     SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("12345678")
     stub_no_proxy_drift
-
-    SSHKit::Backend::Abstract.any_instance.expects(:capture_with_info)
-      .with(:docker, :inspect, "dash-proxy", "--format '{{.Config.Image}}'", "|", :awk, "-F:", "'{print $NF}'")
-      .returns(Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
 
     stub_readiness_wait "no-healthcheck:running", expect: true
     stub_run_capture id: "12345678" # the proxy target, printed by the run itself
@@ -1490,11 +1516,9 @@ class CliProxyTest < CliTestCase
         .returns(run_config)
     end
 
-    # Allow the drift-detection captures without triggering a reboot.
+    # Allow the drift-detection capture without triggering a reboot.
     def stub_no_proxy_drift
-      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with(:docker, :container, :ls, "--all", "--filter", "'name=^dash-proxy$'", "--quiet", raise_on_non_zero_exit: false)
-        .returns("")
+      stub_proxy_state("dash-proxy", "")
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
         .with { |*args| args.first == :echo }
         .returns("")
@@ -1503,22 +1527,50 @@ class CliProxyTest < CliTestCase
     # Simulate an existing proxy container running with a stale config digest.
     def stub_loadbalancer_drift
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("")
-      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with(:docker, :container, :ls, "--all", "--filter", "'name=^load-balancer$'", "--quiet", raise_on_non_zero_exit: false)
-        .returns("abc123")
-      SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with(:docker, :inspect, "load-balancer", "--format", Dash::Commands::Proxy::CONFIG_DIGEST_FORMAT, raise_on_non_zero_exit: false)
-        .returns("stale-digest")
+      stub_proxy_state("load-balancer", "abc123 ghcr.io/zoolutions/dash-proxy:#{Dash::Configuration::Proxy::Run::MINIMUM_VERSION} stale-digest")
     end
 
-    def stub_proxy_drift
+    def stub_proxy_drift(version: Dash::Configuration::Proxy::Run::MINIMUM_VERSION)
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info).returns("")
+      stub_proxy_state("dash-proxy", "abc123 ghcr.io/zoolutions/dash-proxy:#{version} stale-digest")
+    end
+
+    # Every round trip a proxy boot spends, executes and captures interleaved in issue
+    # order, with the deploy's own run-directory and lock commands filtered out and the
+    # long ones elided - the count and the order are what this pins, not the shell.
+    def recorded_proxy_round_trips
+      round_trips = []
+      SSHKit::Backend::Printer.any_instance.stubs(:execute_command).with { |cmd| round_trips << cmd.to_command; true }
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with(:docker, :container, :ls, "--all", "--filter", "'name=^dash-proxy$'", "--quiet", raise_on_non_zero_exit: false)
-        .returns("abc123")
+        .with { |*args| round_trips << args.reject { |arg| arg.is_a?(Hash) }.join(" "); false }
+
+      begin
+        yield
+      ensure
+        SSHKit::Backend::Printer.any_instance.unstub(:execute_command)
+      end
+
+      round_trips.reject { |command| command.match?(/\.dash\/lock-|mv \.kamal \.dash/) }.map { |command| elide(command) }
+    end
+
+    # Collapses the parts that carry a digest, a boot-config read or the whole stage-3c
+    # bridge - asserted in full elsewhere, and unreadable in a sequence.
+    def elide(command)
+      command
+        .sub(/(test -f \.dash\/proxy\/\.legacy-renamed \|\| \().*(\) && mkdir)/, '\\1 ... \\2')
+        .sub(/(docker inspect dash-proxy --format '\{\{\.Id\}\} \{\{\.Config\.Image\}\}).*'/, "\\1 ...'")
+        .sub(/\Aecho \$\(cat \.dash\/proxy\/options .*/, "echo $(cat .dash/proxy/options ...)")
+        .sub(/(docker container start dash-proxy \|\| echo \$\(cat \.dash\/proxy\/options ).*(\| xargs docker run ).*/,
+          "docker container start dash-proxy || echo $(cat .dash/proxy/options ...) | xargs docker run ...")
+        .sub(/\A\/usr\/bin\/env /, "")
+    end
+
+    # The one inspect a boot makes about the running container: id, image tag and config
+    # digest in one line (Dash::Commands::Proxy::State).
+    def stub_proxy_state(container_name, output)
       SSHKit::Backend::Abstract.any_instance.stubs(:capture_with_info)
-        .with(:docker, :inspect, "dash-proxy", "--format", Dash::Commands::Proxy::CONFIG_DIGEST_FORMAT, raise_on_non_zero_exit: false)
-        .returns("stale-digest")
+        .with(:docker, :inspect, container_name, "--format", Dash::Commands::Proxy::STATE_FORMAT, raise_on_non_zero_exit: false)
+        .returns(output)
     end
 
     # Swallow the deploy-lock release; the server-lock hosts get their own

@@ -7,8 +7,23 @@ class Dash::Cli::Proxy::Drift
     @sshkit = sshkit
   end
 
+  # One `docker inspect` for everything a boot asks about the running proxy: whether it
+  # exists, which image tag it runs, and the digest it was booted with. Captured once per
+  # instance - `dash proxy boot` reads all three off it, and `dash doctor` only the first.
+  def state
+    @state ||= Dash::Commands::Proxy::State.parse(
+      capture_with_info(*proxy.inspect_state, raise_on_non_zero_exit: false)
+    )
+  end
+
   def container_exists?
-    capture_with_info(*proxy.container_id, raise_on_non_zero_exit: false).strip.present?
+    state.exists?
+  end
+
+  # The tag the running proxy was booted from, for the minimum-version gate. Nil when
+  # nothing is running - a host with no proxy has no version to be too old.
+  def version
+    state.version
   end
 
   # A proxy container has drifted when it was started with a different config
@@ -30,7 +45,7 @@ class Dash::Cli::Proxy::Drift
 
   private
     def current_digest
-      capture_with_info(*proxy.config_digest, raise_on_non_zero_exit: false).strip
+      state.digest.to_s
     end
 
     def proxy
